@@ -6,8 +6,23 @@ def calculer_d1_d2(S, K, T, r, sigma, q):
     d2 = d1-(sigma*math.sqrt(T))
     return d1, d2
 
-resultat_d1, resultat_d2 = calculer_d1_d2(100, 100, 1, 0.02, 0.20, 0)
-print(resultat_d1)
-print(resultat_d2)
+# resultat_d1, resultat_d2 = calculer_d1_d2(100, 100, 1, 0.02, 0.20, 0)
+# print(resultat_d1)
+# print(resultat_d2)
+
+def prix_call(S, K, T, r, sigma, q):
+    d1, d2 = calculer_d1_d2(S, K, T, r, sigma, q)
+    call = (S*math.exp(-q*T)*norm.cdf(d1))-(K*math.exp(-r*T)*norm.cdf(d2))
+    return call
+
+def prix_put(S, K, T, r, sigma, q):
+    d1, d2 = calculer_d1_d2(S, K, T, r, sigma, q)
+    put = (K*math.exp(-r*T)*norm.cdf(-d2))-(S*math.exp(-q*T)*norm.cdf(-d1))
+    return put
+
+# resultat_call = prix_call(100, 100, 1, 0.02, 0.20, 0)
+# resultat_put = prix_put(100, 100, 1, 0.02, 0.20, 0)
+# print(resultat_call)
+# print(resultat_put)
 
 
