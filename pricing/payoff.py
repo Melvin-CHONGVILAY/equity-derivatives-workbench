@@ -48,6 +48,7 @@ def tracer_payoffs(K: float, C: float, P: float) -> None:
 # P : prime payée pour acheter le put.
 
     valeurs_S_T = np.linspace(50, 150, 200)
+
     payoffs_call = [
     calculer_call_payoff(prix_courant, K)
     for prix_courant in valeurs_S_T
@@ -56,19 +57,44 @@ def tracer_payoffs(K: float, C: float, P: float) -> None:
     calculer_call_PnL(prix_courant, K, C)
     for prix_courant in valeurs_S_T
     ]
+
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-    axes[1].plot(valeurs_S_T, payoffs_call, label="Payoff brut call")
-    axes[1].plot(valeurs_S_T, pnl_call, label="PnL net call")
-    plt.axvline(x=K, color="grey", linestyle="--", label="Strike")
-    plt.axvline(x=K+C, color="red", linestyle="--", label="Breakeven call")
-    plt.axhline(y=0, color="grey", linestyle="--")
-    plt.xlabel("Valeur du sous-jacent à maturité")
-    plt.ylabel("Payoff brut et PnL du call à maturité")
-    axes[1].set_title("Payoff et PnL d’un call européen à maturité")
+    axes[0].plot(valeurs_S_T, payoffs_call, label="Payoff brut call")
+    axes[0].plot(valeurs_S_T, pnl_call, label="PnL net call")
+    axes[0].axvline(x=K, color="grey", linestyle="--", label="Strike")
+    axes[0].axvline(x=K+C, color="red", linestyle="--", label="Breakeven call")
+    axes[0].axhline(y=0, color="grey", linestyle="--")
+    axes[0].set_xlabel("Valeur du sous-jacent à maturité")
+    axes[0].set_ylabel("Payoff brut et PnL du call à maturité")
+    axes[0].set_title("Payoff et PnL d’un call européen à maturité")
+    axes[0].legend()
+    axes[0].grid(linestyle="--", alpha=0.3)
+
+    payoffs_put = [
+    calculer_put_payoff(prix_courant, K)
+    for prix_courant in valeurs_S_T
+    ]
+    pnl_put = [
+    calculer_put_PnL(prix_courant, K, P)
+    for prix_courant in valeurs_S_T
+    ]
+
+    
+    axes[1].plot(valeurs_S_T, payoffs_put, label="Payoff brut put")
+    axes[1].plot(valeurs_S_T, pnl_put, label="PnL net put")
+    axes[1].axvline(x=K, color="grey", linestyle="--", label="Strike")
+    axes[1].axvline(x=K-P, color="red", linestyle="--", label="Breakeven put")
+    axes[1].axhline(y=0, color="grey", linestyle="--")
+    axes[1].set_xlabel("Valeur du sous-jacent à maturité")
+    axes[1].set_ylabel("Payoff brut et PnL du put à maturité")
+    axes[1].set_title("Payoff et PnL d’un put européen à maturité")
     axes[1].legend()
-    plt.grid(linestyle="--", alpha=0.3)
+    axes[1].grid(linestyle="--", alpha=0.3)
+
+    fig.tight_layout()
     plt.show()
 
-tracer_payoffs(K=100, C=4, P=3)
+if __name__ == "__main__":
+    tracer_payoffs(K=100, C=4, P=3)
 
 
