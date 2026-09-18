@@ -20,9 +20,11 @@ def prix_put(S, K, T, r, sigma, q):
     put = (K*math.exp(-r*T)*norm.cdf(-d2))-(S*math.exp(-q*T)*norm.cdf(-d1))
     return put
 
-resultat_call = prix_call(82, 100, 1, 0.02, 0.20, 0)
-resultat_put = prix_put(110, 100, 1, 0.02, 0.20, 0)
-print(resultat_call)
-print(resultat_put)
+if __name__ == "__main__": 
+    resultat_call = prix_call(82, 100, 1, 0.02, 0.20, 0)
+    resultat_put = prix_put(110, 100, 1, 0.02, 0.20, 0)
+
+    print(resultat_call)
+    print(resultat_put)
 
 
