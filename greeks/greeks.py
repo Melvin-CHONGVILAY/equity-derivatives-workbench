@@ -83,3 +83,8 @@ def delta_call_num(S, K, T, r, sigma, q=0.0, h=0.01):
 
 # print(resultat_delta_ana)
 # print(resultat_delta_num)
+
+def delta_put_num(S, K, T, r, sigma, q=0.0, h=0.01):
+    prix_initial = prix_put(S, K, T, r, sigma, q)
+    prix_choque = prix_put(S+h, K, T, r, sigma, q)
+    return (prix_choque-prix_initial)/h
