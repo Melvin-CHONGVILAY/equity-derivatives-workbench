@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import math
 
 def simuler_trajectoires(S0, T, r, sigma, q=0.0, n_trajectoires=100, n_pas=12, seed=42):
     dt = T / n_pas
@@ -30,6 +31,7 @@ def tracer_trajectoires(trajectoires, T, n_a_tracer=10):
     plt.ylabel("Prix du sous-jacent")
     plt.title("Trajectoires simulées du sous-jacent")
     plt.grid()
+    plt.axhline(y=100, color="grey", linestyle="--")
     plt.show()
 
 if __name__ == "__main__":
@@ -73,5 +75,26 @@ def autocall(trajectoires, S0=100, seuil_rappel=100):
     cashflow_final = tableau_rappel_coupon + tableau_maturite
     return cashflow_final
 
+def dates_paiement_autocall(trajectoires):
+    n_trajectoires = trajectoires.shape[0]
+    dates_paiement = np.ones(n_trajectoires)
+
+    rappel_mois_3 = trajectoires[:, 3] >= 100
+    rappel_mois_6 = (trajectoires[:, 3] < 100) & (trajectoires[:, 6] >= 100)
+    rappel_mois_9 = (
+        (trajectoires[:, 3] < 100)
+        & (trajectoires[:, 6] < 100)
+        & (trajectoires[:, 9] >= 100)
+    )
+
+    dates_paiement[rappel_mois_3] = 0.25
+    dates_paiement[rappel_mois_6] = 0.5
+    dates_paiement[rappel_mois_9] = 0.75
+
+    return dates_paiement
+
+def cashflow_final_actualise(cashflow_final, r, t):
+    resultats_actualise = cashflow_final*math.exp(-r*t)
+    return resultats_actualise
     
 
