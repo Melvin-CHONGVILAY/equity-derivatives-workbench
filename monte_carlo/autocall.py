@@ -90,10 +90,6 @@ def dates_paiement_autocall(
     return dates_paiement
 
 def cashflow_final_actualise(cashflow_final, r, t):
-    resultats_actualise = cashflow_final*math.exp(-r*t)
-    return resultats_actualise
-
-def cashflow_final_actualise(cashflow_final, r, t):
     resultats_actualises = cashflow_final * np.exp(-r * t)
     return resultats_actualises
 
@@ -268,7 +264,6 @@ def analyser_convergence(
         })
 
     return resultats_convergence
-
 if __name__ == "__main__":
     estimation = valoriser_autocall(
         S0=100,
@@ -308,5 +303,3 @@ if __name__ == "__main__":
 
     for resultat in convergence:
         print(resultat)
-    
-
