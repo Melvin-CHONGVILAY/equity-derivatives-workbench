@@ -303,3 +303,4 @@ if __name__ == "__main__":
 
     for resultat in convergence:
         print(resultat)
+
