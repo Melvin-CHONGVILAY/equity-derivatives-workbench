@@ -60,7 +60,7 @@ def vega_put(S, K, T, r, sigma, q=0.0):
 # print(resultat_vega_put)
 
 def theta_put(S, K, T, r, sigma, q=0.0):
-    d1, d2 = calculer_d1_d2(S, T, K, r, sigma, q)
+    d1, d2 = calculer_d1_d2(S, K, T, r, sigma, q)
     return ((-S*np.exp(-q*T)*norm.pdf(d1)*sigma)/(2*math.sqrt(T)))+r*K*np.exp(-r*T)*norm.cdf(-d2)-q*S*np.exp(-q*T)*norm.cdf(-d1)
 
 # resultat_theta_put = theta_put(100, 100, 1, 0.02, 0.20, 0)
@@ -70,8 +70,8 @@ def rho_put(S, K, T, r, sigma, q=0.0):
     d1, d2 = calculer_d1_d2(S, K, T, r, sigma, q)
     return -K*np.exp(-r*T)*T*norm.cdf(-d2)
 
-# resultat_rho_put = theta_put(100, 100, 1, 0.02, 0.20, 0)
-# print(resultat_theta_put)
+# resultat_rho_put = rho_put(100, 100, 1, 0.02, 0.20, 0)
+# print(resultat_rho_put)
 
 def delta_call_num(S, K, T, r, sigma, q=0.0, h=0.01):
     prix_initial = prix_call(S, K, T, r, sigma, q)

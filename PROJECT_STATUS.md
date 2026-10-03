@@ -1,12 +1,14 @@
 Equity Derivatives Workbench — État du projet
-Dernière mise à jour : 1er octobre 2026
+Dernière mise à jour : 3 octobre 2026
 
 Objectif
 Portfolio Python de dérivés actions pour une recherche de stage en avril 2027 et support
 d’apprentissage en pricing, Greeks, Monte Carlo, risk et PnL Explain.
 
 Phase actuelle
-Phase 5 — Scénarios de marché et stress tests.
+Phases 6 à 9 codées et testées. Restent pour les Phases 8 et 9 : le déploiement Streamlit Cloud,
+le GIF de démo et la section "Ce que j'ai appris" du README (à écrire soi-même).
+Prochaine phase : Phase 10 — préparation aux questions d'entretien.
 
 Phases terminées
 Phase 0 : environnement, Git et venv
@@ -18,6 +20,16 @@ Phase 2 : payoff et PnL call/put
 Phase 3 : Greeks analytiques et Delta numérique
 
 Phase 4 : Monte Carlo vectorisé pour un autocall simplifié
+
+Phase 5 : scénarios de marché et stress tests (call, put, autocall)
+
+Phase 6 : Hedge & P&L Explain
+
+Phase 7 : consolidation des tests
+
+Phase 8 : app Streamlit (déploiement public restant)
+
+Phase 9 : README (lien de l'app, GIF et "Ce que j'ai appris" restants)
 
 Fichiers existants
 pricing/black_scholes.py
@@ -70,6 +82,14 @@ Différences finies :
 delta_call_num
 
 delta_put_num
+
+Conventions vérifiées contre des différences finies :
+
+Vega : dV/dsigma pour sigma en décimal (choc de 0.01 = 1 point de vol, vega/100 = par point)
+
+Theta : annuel, en temps calendaire, theta = -dV/dT (1 jour = theta/365)
+
+Rho : dV/dr pour r en décimal (choc de 0.001 = 10 bps)
 
 Convention des paramètres :
 
@@ -130,6 +150,44 @@ Probabilités de rappel par date, de rappel anticipé et de perte en capital
 
 Analyse de convergence pour plusieurs nombres de trajectoires
 
+pricing/implied_vol.py
+Fonction existante :
+
+implied_vol(prix_marche, S, K, T, r, type_option, sigma_initiale=0.20, q=0, ...)
+
+Newton-Raphson avec contrôle des bornes de non-arbitrage et garde-fou si le pas sort de ]0 ; 5]
+
+risk/scenarios.py
+Fonctions existantes :
+
+stress_spot_call, stress_spot_put, stress_vol_call, stress_vol_put
+
+stress_vol_autocall, stress_spot_autocall (même seed avant/après : nombres aléatoires communs)
+
+risk/pnl_explain.py
+Fonctions existantes :
+
+prix_option, greeks_option, marche_apres_choc
+
+pnl_reel : full repricing, prix après - prix avant
+
+pnl_estime_greeks : Δ·ΔS + ½·Γ·ΔS² + Θ·Δt + Vega·Δσ + ρ·Δr
+
+pnl_explain : réel, estimé, contributions, écart, écart en % (None si P&L réel nul), commentaire
+
+pnl_couverture_delta : couverture delta statique avec des actions
+
+balayage_chocs_spot, afficher_pnl_explain, tracer_balayage
+
+Unités des chocs : choc_spot relatif, choc_vol et choc_taux absolus, jours calendaires (Δt = jours/365),
+quantite positive = long, négative = short.
+
+Périmètre : call et put Black-Scholes uniquement (pas de P&L Explain autocall).
+
+app.py
+Interface Streamlit, 4 onglets : Pricing & Greeks (+ vol implicite), Autocall Monte Carlo,
+Scénarios de marché, Hedge & P&L Explain. Lancement : streamlit run app.py
+
 Tests existants
 tests/test_payoff.py
 Call ITM, OTM et break-even
@@ -148,6 +206,36 @@ Delta put analytique contre numérique
 Delta call compris entre 0 et 1
 
 Delta put compris entre -1 et 0
+
+Gamma, vega, theta, rho analytiques contre différences finies (call et put)
+
+Gamma et vega identiques call/put, parité sur le delta
+
+tests/test_black_scholes.py
+Parité call-put (avec et sans dividende)
+
+Vol quasi nulle, maturité très courte, spot = strike, bornes du prix, prix croissant avec la vol
+
+Refus des paramètres invalides (T = 0, sigma <= 0, spot nul)
+
+Vol implicite sur plusieurs strikes (dont un call très ITM) et refus d'un prix hors bornes
+
+tests/test_scenarios.py
+Stress spot et vol sur call, put et autocall
+
+tests/test_pnl_explain.py (34 tests)
+Aucun choc, sens du P&L call/put, cohérence reprix et somme des contributions, quantité
+
+Unité de chaque contribution (delta, gamma, vega, rho, theta) contre le reprix complet
+
+Petit choc (résidu < 2% du P&L réel), gamma améliore le delta seul, gros choc cohérent
+
+Couverture delta (un call long couvert gagne sur un mouvement de spot), balayage
+
+Paramètres invalides
+
+tests/test_app.py
+L'app Streamlit se lance sans exception, cas put + gros choc, message d'erreur si maturité dépassée
 
 tests/test_autocall.py
 Tests validés :
@@ -191,6 +279,27 @@ python -m pytest tests/test_autocall.py -v
 Résultat : tous les tests de la Phase 4 passent.
 
 Dernière étape réalisée
+Phases 6 à 9 le 3 octobre 2026.
+
+Commande de validation : python -m pytest -v (ou pytest)
+
+Résultat : 124 tests passent.
+
+Bugs corrigés :
+
+theta_put appelait calculer_d1_d2(S, T, K, ...) au lieu de (S, K, T, ...) : theta du put faux
+(+0.07 au lieu de -3.32 sur le cas ATM avec q = 1%), donc P&L Explain du put faux sur le terme theta
+
+calculer_d1_d2 : division par zéro si T ou sigma = 0 et prix négatif sans erreur si sigma < 0,
+remplacé par une ValueError explicite
+
+implied_vol : Newton divergeait sur un call très ITM à vol élevée (vega faible au départ)
+
+tracer_trajectoires s'appelait elle-même à la fin (récursion infinie)
+
+pytest seul ne trouvait pas les modules : ajout de pytest.ini
+
+Historique Phase 4 :
 Phase 4 terminée le 1er octobre 2026.
 
 Le pricer Monte Carlo de l’autocall simplifié simule les trajectoires, applique les règles
@@ -211,28 +320,22 @@ Probabilité de rappel anticipé : environ 68.97%
 Probabilité de perte en capital : environ 0.47%
 
 Prochaine étape
-Commencer la Phase 5 dans risk/scenarios.py.
+Déployer l'app sur Streamlit Community Cloud et ajouter le lien en haut du README.
 
-Première petite brique : repricer une option vanille après un choc du spot, puis retourner :
+Ajouter un GIF de démo et rédiger "Ce que j'ai appris".
 
-le prix avant choc ;
-
-le prix après choc ;
-
-la variation en euros ;
-
-la variation en pourcentage.
-
-Ensuite :
-
-choc de volatilité ;
-
-stress test de l’autocall ;
-
-tableau récapitulatif des scénarios.
+Phase 10 : questions d'entretien et fiches d'explication de chaque partie.
 
 Problèmes ouverts
-Aucun problème bloquant identifié pour la Phase 4.
+Aucun test en échec.
+
+Pas de P&L Explain pour l'autocall (pas de Greeks analytiques, seulement des stress tests Monte Carlo).
+
+La couverture delta est statique sur un pas (pas de rebalancement, financement ignoré).
+
+La vol implicite n'est pas identifiable quand la valeur temps est quasi nulle (option très ITM/OTM à vol faible).
+
+PROJECT_STATUS.docx n'a pas été mis à jour (ce fichier .md fait foi).
 
 Le term sheet reste volontairement simplifié : volatilité et taux constants, observations trimestrielles, absence de smile, de calibration, de risque de crédit et de coûts de couverture.
 
@@ -251,4 +354,6 @@ requirements.txt partagé
 
 Modules lancés depuis la racine avec python -m ...
 
-Tests lancés avec python -m pytest -v
+Tests lancés avec python -m pytest -v (ou pytest grâce à pytest.ini)
+
+App lancée avec streamlit run app.py

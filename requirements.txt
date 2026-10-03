@@ -2,3 +2,4 @@ numpy
 scipy
 matplotlib
 pytest
+streamlit>=1.50

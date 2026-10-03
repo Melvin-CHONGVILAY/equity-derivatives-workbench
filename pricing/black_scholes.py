@@ -2,6 +2,15 @@ import math
 from scipy.stats import norm
 
 def calculer_d1_d2(S, K, T, r, sigma, q):
+    # Sans ces contrôles : division par zéro si T ou sigma = 0,
+    # et prix faux (négatif) sans erreur si sigma < 0
+    if S <= 0 or K <= 0:
+        raise ValueError("Le spot et le strike doivent être strictement positifs.")
+    if T <= 0:
+        raise ValueError("La maturité doit être strictement positive.")
+    if sigma <= 0:
+        raise ValueError("La volatilité doit être strictement positive.")
+
     d1 = (math.log(S/K)+(r-q+(sigma**2/2))*T)/(sigma*math.sqrt(T))
     d2 = d1-(sigma*math.sqrt(T))
     return d1, d2

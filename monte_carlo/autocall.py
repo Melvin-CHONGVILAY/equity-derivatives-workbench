@@ -31,8 +31,6 @@ def tracer_trajectoires(trajectoires, T, n_a_tracer=10):
     plt.axhline(y=100, color="grey", linestyle="--")
     plt.show()
 
-    tracer_trajectoires(trajectoires, T=1, n_a_tracer=10)
-
 def autocall(trajectoires, S0=100, seuil_rappel=100):
     prix_a_observation = trajectoires[:,[3,6,9,12]]
 
