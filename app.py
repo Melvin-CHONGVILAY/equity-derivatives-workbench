@@ -60,6 +60,16 @@ def stress_autocall_cache(S0, T, r, sigma, q, n_trajectoires, seed, chocs_spot, 
     return lignes
 
 
+def afficher_graphique(fig):
+    # Par défaut st.pyplot étire l'image sur toute la largeur de la page : textes et
+    # légende grossissent avec la fenêtre. On fixe donc la largeur affichée en pixels.
+    # bbox_inches=None : la taille de l'image ne dépend plus de la longueur des
+    # étiquettes des axes (sinon le graphique change un peu à chaque nouvelle valeur).
+    fig.tight_layout()
+    st.pyplot(fig, width=700, bbox_inches=None)
+    plt.close(fig)
+
+
 onglet_pricing, onglet_autocall, onglet_scenarios, onglet_pnl = st.tabs([
     "Pricing & Greeks", "Autocall Monte Carlo", "Scénarios de marché", "Hedge & P&L Explain"
 ])
@@ -95,17 +105,27 @@ with onglet_pricing:
     else:
         payoff = np.maximum(K - spots, 0)
 
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(7, 3.5))
     ax.plot(spots, prix_spots, label=f"Prix Black-Scholes (T = {T:g} an)")
     ax.plot(spots, payoff, "--", label="Payoff à maturité")
     ax.axvline(K, color="grey", linestyle=":", label="Strike")
-    ax.axvline(S, color="red", linestyle=":", label="Spot actuel")
+    if 0.5 * K <= S <= 1.5 * K:
+        ax.axvline(S, color="red", linestyle=":", label="Spot actuel")
+
+    # Axes fixés par rapport au strike : sinon matplotlib recalcule l'échelle
+    # à chaque changement de paramètre et le graphique "saute"
+    ax.set_xlim(0.5 * K, 1.5 * K)
+    ax.set_ylim(0, max(0.6 * K, max(prix_spots) * 1.05))
+
     ax.set_xlabel("Spot")
     ax.set_ylabel("Valeur de l'option")
-    ax.legend()
+    # Légende du côté où la courbe est basse (à gauche pour un call, à droite pour un put)
+    ax.legend(loc="upper left" if type_option == "call" else "upper right", fontsize="small")
     ax.grid(alpha=0.3)
-    st.pyplot(fig)
-    plt.close(fig)
+    afficher_graphique(fig)
+
+    if not 0.5 * K <= S <= 1.5 * K:
+        st.caption("Le spot actuel est hors de la zone affichée (50% à 150% du strike).")
 
     st.subheader("Volatilité implicite")
     st.write("Le marché cote les options en vol : on retrouve σ à partir d'un prix observé (Newton-Raphson).")
@@ -144,13 +164,12 @@ with onglet_autocall:
 
     dates = ["3 mois", "6 mois", "9 mois", "12 mois"]
     probas = [resultat[f"probabilite_rappel_mois_{m}"] for m in (3, 6, 9, 12)]
-    fig, ax = plt.subplots(figsize=(8, 3.5))
+    fig, ax = plt.subplots(figsize=(7, 3))
     ax.bar(dates, [p * 100 for p in probas])
     ax.set_ylabel("Probabilité (%)")
     ax.set_title("Probabilité de rappel à chaque date d'observation")
     ax.grid(axis="y", alpha=0.3)
-    st.pyplot(fig)
-    plt.close(fig)
+    afficher_graphique(fig)
 
     st.subheader("Convergence")
     st.write("L'erreur standard diminue en 1/√N : 4 fois plus de trajectoires divisent l'erreur par 2.")
@@ -221,14 +240,13 @@ with onglet_pnl:
 
     noms = list(resultat["contributions"].keys()) + ["résidu"]
     valeurs = list(resultat["contributions"].values()) + [resultat["ecart"]]
-    fig, ax = plt.subplots(figsize=(8, 3.5))
+    fig, ax = plt.subplots(figsize=(7, 3))
     ax.bar(noms, valeurs, color=["tab:blue"] * 5 + ["tab:red"])
     ax.axhline(0, color="grey", linewidth=0.8)
     ax.set_ylabel("P&L (€)")
     ax.set_title("Décomposition du P&L par Greek")
     ax.grid(axis="y", alpha=0.3)
-    st.pyplot(fig)
-    plt.close(fig)
+    afficher_graphique(fig)
 
     st.subheader("Couverture en delta")
     couverture = pnl_couverture_delta(
@@ -245,14 +263,13 @@ with onglet_pnl:
         S, K, T, r, sigma, q, type_option,
         chocs=list(np.linspace(-0.30, 0.30, 25)), quantite=quantite
     )
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(7, 3.5))
     ax.plot([l["choc_spot"] * 100 for l in lignes], [l["pnl_reel"] for l in lignes], label="P&L réel (reprix)", linewidth=2)
     ax.plot([l["choc_spot"] * 100 for l in lignes], [l["pnl_estime"] for l in lignes], "--", label="Delta + gamma")
     ax.plot([l["choc_spot"] * 100 for l in lignes], [l["pnl_delta_seul"] for l in lignes], ":", label="Delta seul")
     ax.axhline(0, color="grey", linewidth=0.8)
     ax.set_xlabel("Choc de spot (%)")
     ax.set_ylabel("P&L (€)")
-    ax.legend()
+    ax.legend(fontsize="small")
     ax.grid(alpha=0.3)
-    st.pyplot(fig)
-    plt.close(fig)
+    afficher_graphique(fig)
