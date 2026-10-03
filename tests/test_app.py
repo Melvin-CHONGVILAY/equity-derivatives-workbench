@@ -14,6 +14,8 @@ def test_app_se_lance_sans_erreur():
     app.run()
 
     assert not app.exception
+    # Aucun avertissement affiché (ex. option dépréciée de st.pyplot)
+    assert not app.warning
     assert len(app.tabs) == 4
 
 

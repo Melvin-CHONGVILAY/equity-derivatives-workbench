@@ -2,6 +2,7 @@
 # Interface Streamlit du projet : lancer avec "streamlit run app.py" depuis la racine.
 # L'app ne contient pas de formule : elle appelle uniquement les modules du projet.
 
+import io
 import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
@@ -61,13 +62,15 @@ def stress_autocall_cache(S0, T, r, sigma, q, n_trajectoires, seed, chocs_spot, 
 
 
 def afficher_graphique(fig):
-    # Par défaut st.pyplot étire l'image sur toute la largeur de la page : textes et
-    # légende grossissent avec la fenêtre. On fixe donc la largeur affichée en pixels.
-    # bbox_inches=None : la taille de l'image ne dépend plus de la longueur des
-    # étiquettes des axes (sinon le graphique change un peu à chaque nouvelle valeur).
+    # On n'utilise pas st.pyplot : il étire l'image sur toute la page et recadre la
+    # figure ("tight"), donc la taille change avec la fenêtre et les valeurs.
+    # Ici la figure est enregistrée en PNG à taille fixe (figsize x dpi),
+    # puis affichée avec une largeur fixe de 700 px.
     fig.tight_layout()
-    st.pyplot(fig, width=700, bbox_inches=None)
+    image = io.BytesIO()
+    fig.savefig(image, format="png", dpi=200)
     plt.close(fig)
+    st.image(image, width=700)
 
 
 onglet_pricing, onglet_autocall, onglet_scenarios, onglet_pnl = st.tabs([
