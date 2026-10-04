@@ -17,6 +17,8 @@ def test_app_se_lance_sans_erreur():
     # Aucun avertissement affiché (ex. option dépréciée de st.pyplot)
     assert not app.warning
     assert len(app.tabs) == 4
+    # Le graphique du payoff est un graphique Altair (dessiné par le navigateur), pas une image
+    assert len(app.get("vega_lite_chart")) == 1
 
 
 def test_app_put_et_gros_choc():

@@ -5,6 +5,7 @@
 import io
 import numpy as np
 import matplotlib.pyplot as plt
+import altair as alt
 import streamlit as st
 
 from pricing.black_scholes import prix_call, prix_put
@@ -108,24 +109,51 @@ with onglet_pricing:
     else:
         payoff = np.maximum(K - spots, 0)
 
-    fig, ax = plt.subplots(figsize=(7, 3.5))
-    ax.plot(spots, prix_spots, label=f"Prix Black-Scholes (T = {T:g} an)")
-    ax.plot(spots, payoff, "--", label="Payoff à maturité")
-    ax.axvline(K, color="grey", linestyle=":", label="Strike")
+    # Ce graphique est dessiné par le navigateur (Altair, installé avec Streamlit) et pas
+    # par matplotlib : ce n'est plus une image, donc rien à redimensionner quand on change
+    # les valeurs, et on peut lire les points au survol de la souris.
+    nom_prix = f"Prix Black-Scholes (T = {T:g} an)"
+    points = []
+    for s, p, v in zip(spots, prix_spots, payoff):
+        points.append({"Spot": float(s), "Valeur": float(p), "Courbe": nom_prix})
+        points.append({"Spot": float(s), "Valeur": float(v), "Courbe": "Payoff à maturité"})
+
+    # Axes fixés par rapport au strike, avec une petite marge sous 0
+    # pour bien voir les courbes qui sont à y = 0
+    haut = max(0.6 * K, max(prix_spots) * 1.05)
+    echelle_x = alt.Scale(domain=[0.5 * K, 1.5 * K])
+    echelle_y = alt.Scale(domain=[-0.05 * haut, haut])
+
+    courbes = alt.Chart(alt.Data(values=points)).mark_line(clip=True).encode(
+        x=alt.X("Spot:Q", scale=echelle_x),
+        y=alt.Y("Valeur:Q", scale=echelle_y, title="Valeur de l'option"),
+        color=alt.Color("Courbe:N", title=None,
+                        scale=alt.Scale(domain=[nom_prix, "Payoff à maturité"], range=["#1f77b4", "#ff7f0e"]),
+                        legend=alt.Legend(orient="top-left" if type_option == "call" else "top-right", labelLimit=0)),
+        strokeDash=alt.StrokeDash("Courbe:N", legend=None,
+                                  scale=alt.Scale(domain=[nom_prix, "Payoff à maturité"], range=[[1, 0], [6, 4]])),
+        tooltip=["Courbe:N", alt.Tooltip("Spot:Q", format=".2f"), alt.Tooltip("Valeur:Q", format=".4f")],
+    )
+
+    # Repères verticaux : strike (gris) et spot actuel (rouge) s'il est dans la zone affichée
+    reperes = [{"Spot": K, "Repère": "Strike", "couleur": "grey", "hauteur_texte": 12}]
     if 0.5 * K <= S <= 1.5 * K:
-        ax.axvline(S, color="red", linestyle=":", label="Spot actuel")
+        reperes.append({"Spot": S, "Repère": "Spot actuel", "couleur": "red", "hauteur_texte": 28})
+    base_reperes = alt.Chart(alt.Data(values=reperes)).encode(
+        x=alt.X("Spot:Q", scale=echelle_x),
+        color=alt.Color("couleur:N", scale=None),
+    )
+    lignes_verticales = base_reperes.mark_rule(strokeDash=[3, 3])
+    # hauteur_texte en pixels (scale=None) : les deux étiquettes ne se chevauchent pas si S = K
+    textes = base_reperes.mark_text(align="left", dx=4).encode(
+        text="Repère:N", y=alt.Y("hauteur_texte:Q", scale=None)
+    )
 
-    # Axes fixés par rapport au strike : sinon matplotlib recalcule l'échelle
-    # à chaque changement de paramètre et le graphique "saute"
-    ax.set_xlim(0.5 * K, 1.5 * K)
-    ax.set_ylim(0, max(0.6 * K, max(prix_spots) * 1.05))
+    zero = alt.Chart(alt.Data(values=[{"y": 0}])).mark_rule(color="grey", opacity=0.5).encode(y="y:Q")
 
-    ax.set_xlabel("Spot")
-    ax.set_ylabel("Valeur de l'option")
-    # Légende du côté où la courbe est basse (à gauche pour un call, à droite pour un put)
-    ax.legend(loc="upper left" if type_option == "call" else "upper right", fontsize="small")
-    ax.grid(alpha=0.3)
-    afficher_graphique(fig)
+    graphique = (courbes + lignes_verticales + textes + zero).properties(height=350)
+    # Largeur fixe : même taille sur un petit ou un grand écran
+    st.altair_chart(graphique, width=700)
 
     if not 0.5 * K <= S <= 1.5 * K:
         st.caption("Le spot actuel est hors de la zone affichée (50% à 150% du strike).")
