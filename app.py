@@ -2,11 +2,14 @@
 # Interface Streamlit du projet : lancer avec "streamlit run app.py" depuis la racine.
 # L'app ne contient pas de formule : elle appelle uniquement les modules du projet.
 
-import io
 import numpy as np
-import matplotlib.pyplot as plt
 import altair as alt
 import streamlit as st
+
+# Les graphiques de l'app sont faits avec Altair (dessinés par le navigateur) et pas
+# avec matplotlib : matplotlib n'est pas thread-safe, et Streamlit relance le script
+# à chaque changement de paramètre pendant que l'ancien calcul dessine encore,
+# ce qui déformait parfois les images.
 
 from pricing.black_scholes import prix_call, prix_put
 from pricing.implied_vol import implied_vol
@@ -60,18 +63,6 @@ def stress_autocall_cache(S0, T, r, sigma, q, n_trajectoires, seed, chocs_spot, 
         res = stress_vol_autocall(S0, T, r, sigma, q, choc, n_trajectoires, seed)
         lignes.append({"scénario": f"vol {choc * 100:+.0f} pts", **res})
     return lignes
-
-
-def afficher_graphique(fig):
-    # On n'utilise pas st.pyplot : il étire l'image sur toute la page et recadre la
-    # figure ("tight"), donc la taille change avec la fenêtre et les valeurs.
-    # Ici la figure est enregistrée en PNG à taille fixe (figsize x dpi),
-    # puis affichée avec une largeur fixe de 700 px.
-    fig.tight_layout()
-    image = io.BytesIO()
-    fig.savefig(image, format="png", dpi=200)
-    plt.close(fig)
-    st.image(image, width=700)
 
 
 onglet_pricing, onglet_autocall, onglet_scenarios, onglet_pnl = st.tabs([
@@ -195,12 +186,13 @@ with onglet_autocall:
 
     dates = ["3 mois", "6 mois", "9 mois", "12 mois"]
     probas = [resultat[f"probabilite_rappel_mois_{m}"] for m in (3, 6, 9, 12)]
-    fig, ax = plt.subplots(figsize=(7, 3))
-    ax.bar(dates, [p * 100 for p in probas])
-    ax.set_ylabel("Probabilité (%)")
-    ax.set_title("Probabilité de rappel à chaque date d'observation")
-    ax.grid(axis="y", alpha=0.3)
-    afficher_graphique(fig)
+    barres = [{"Date": d, "Probabilité (%)": p * 100} for d, p in zip(dates, probas)]
+    graphique = alt.Chart(alt.Data(values=barres)).mark_bar().encode(
+        x=alt.X("Date:N", sort=dates, title=None, axis=alt.Axis(labelAngle=0)),
+        y=alt.Y("Probabilité (%):Q", scale=alt.Scale(domain=[0, 100])),
+        tooltip=["Date:N", alt.Tooltip("Probabilité (%):Q", format=".2f")],
+    ).properties(title="Probabilité de rappel à chaque date d'observation", height=300)
+    st.altair_chart(graphique, width=700)
 
     st.subheader("Convergence")
     st.write("L'erreur standard diminue en 1/√N : 4 fois plus de trajectoires divisent l'erreur par 2.")
@@ -271,13 +263,19 @@ with onglet_pnl:
 
     noms = list(resultat["contributions"].keys()) + ["résidu"]
     valeurs = list(resultat["contributions"].values()) + [resultat["ecart"]]
-    fig, ax = plt.subplots(figsize=(7, 3))
-    ax.bar(noms, valeurs, color=["tab:blue"] * 5 + ["tab:red"])
-    ax.axhline(0, color="grey", linewidth=0.8)
-    ax.set_ylabel("P&L (€)")
-    ax.set_title("Décomposition du P&L par Greek")
-    ax.grid(axis="y", alpha=0.3)
-    afficher_graphique(fig)
+    barres = []
+    for nom, valeur in zip(noms, valeurs):
+        couleur = "#d62728" if nom == "résidu" else "#1f77b4"
+        barres.append({"Terme": nom, "P&L (€)": valeur, "couleur": couleur})
+    graphique = alt.Chart(alt.Data(values=barres)).mark_bar().encode(
+        x=alt.X("Terme:N", sort=noms, title=None, axis=alt.Axis(labelAngle=0)),
+        y=alt.Y("P&L (€):Q", title="P&L (€)"),
+        color=alt.Color("couleur:N", scale=None),
+        tooltip=["Terme:N", alt.Tooltip("P&L (€):Q", format="+.4f")],
+    )
+    zero = alt.Chart(alt.Data(values=[{"y": 0}])).mark_rule(color="grey").encode(y="y:Q")
+    graphique = (graphique + zero).properties(title="Décomposition du P&L par Greek", height=300)
+    st.altair_chart(graphique, width=700)
 
     st.subheader("Couverture en delta")
     couverture = pnl_couverture_delta(
@@ -294,13 +292,22 @@ with onglet_pnl:
         S, K, T, r, sigma, q, type_option,
         chocs=list(np.linspace(-0.30, 0.30, 25)), quantite=quantite
     )
-    fig, ax = plt.subplots(figsize=(7, 3.5))
-    ax.plot([l["choc_spot"] * 100 for l in lignes], [l["pnl_reel"] for l in lignes], label="P&L réel (reprix)", linewidth=2)
-    ax.plot([l["choc_spot"] * 100 for l in lignes], [l["pnl_estime"] for l in lignes], "--", label="Delta + gamma")
-    ax.plot([l["choc_spot"] * 100 for l in lignes], [l["pnl_delta_seul"] for l in lignes], ":", label="Delta seul")
-    ax.axhline(0, color="grey", linewidth=0.8)
-    ax.set_xlabel("Choc de spot (%)")
-    ax.set_ylabel("P&L (€)")
-    ax.legend(fontsize="small")
-    ax.grid(alpha=0.3)
-    afficher_graphique(fig)
+    noms_courbes = ["P&L réel (reprix)", "Delta + gamma", "Delta seul"]
+    cles = ["pnl_reel", "pnl_estime", "pnl_delta_seul"]
+    points = []
+    for ligne in lignes:
+        for nom, cle in zip(noms_courbes, cles):
+            points.append({"Choc de spot (%)": float(ligne["choc_spot"]) * 100, "P&L (€)": ligne[cle], "Courbe": nom})
+
+    courbes = alt.Chart(alt.Data(values=points)).mark_line().encode(
+        x=alt.X("Choc de spot (%):Q"),
+        y=alt.Y("P&L (€):Q", title="P&L (€)"),
+        color=alt.Color("Courbe:N", title=None,
+                        scale=alt.Scale(domain=noms_courbes, range=["#1f77b4", "#ff7f0e", "#2ca02c"]),
+                        legend=alt.Legend(orient="top-left", labelLimit=0)),
+        strokeDash=alt.StrokeDash("Courbe:N", legend=None,
+                                  scale=alt.Scale(domain=noms_courbes, range=[[1, 0], [6, 4], [2, 2]])),
+        tooltip=["Courbe:N", alt.Tooltip("Choc de spot (%):Q", format="+.1f"), alt.Tooltip("P&L (€):Q", format="+.4f")],
+    )
+    zero = alt.Chart(alt.Data(values=[{"y": 0}])).mark_rule(color="grey").encode(y="y:Q")
+    st.altair_chart((courbes + zero).properties(height=350), width=700)
