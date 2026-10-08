@@ -8,15 +8,13 @@ Petit outil Python de pricing et de risque sur options vanille et autocall : Bla
 
 ![Onglet Hedge & P&L Explain](docs/capture_pnl_explain.png)
 
-_Démo vidéo / GIF : à ajouter._
-
 ---
 
 ## Objectif
 
-Projet personnel réalisé pendant mon M1 finance de marché, en préparation d'un stage en equity derivatives (structuration, trading, market risk, product control) à partir d'avril 2027.
+Projet personnel réalisé pendant mon M1 finance de marché.
 
-L'idée est de construire de bout en bout un outil simple mais cohérent, et de pouvoir expliquer chaque brique : comment on price une option, ce que mesurent les Greeks, pourquoi un autocall se valorise par Monte Carlo, comment un desk mesure l'impact d'un choc de marché et réconcilie son P&L.
+L'idée est de construire de bout en bout un outil simple mais cohérent : comment on price une option, ce que mesurent les Greeks, pourquoi un autocall se valorise par Monte Carlo, comment un desk mesure l'impact d'un choc de marché et réconcilie son P&L.
 
 L'autocall est un produit signature des desks de produits structurés français, c'est pour ça qu'il a été choisi comme produit "exotique" du projet.
 
@@ -110,8 +108,3 @@ Les tests couvrent la parité call-put, les cas limites (vol quasi nulle, maturi
 
 1. Pousser le repo sur GitHub (avec `app.py` et `requirements.txt` à la racine).
 2. Sur [share.streamlit.io](https://share.streamlit.io), se connecter avec GitHub, "New app", choisir le repo, la branche et `app.py`.
-3. Copier le lien de l'app en haut de ce README.
-
-## Ce que j'ai appris
-
-_À rédiger avec mes propres mots._
