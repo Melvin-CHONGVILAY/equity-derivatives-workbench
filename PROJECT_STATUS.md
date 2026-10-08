@@ -1,13 +1,13 @@
 Equity Derivatives Workbench — État du projet
-Dernière mise à jour : 3 octobre 2026
+Dernière mise à jour : 8 octobre 2026
 
 Objectif
 Portfolio Python de dérivés actions pour une recherche de stage en avril 2027 et support
 d’apprentissage en pricing, Greeks, Monte Carlo, risk et PnL Explain.
 
 Phase actuelle
-Phases 6 à 9 codées et testées. Restent pour les Phases 8 et 9 : le déploiement Streamlit Cloud,
-le GIF de démo et la section "Ce que j'ai appris" du README (à écrire soi-même).
+Phases 0 à 9 codées, testées et finalisées. Reste : déployer l'app sur Streamlit Community Cloud
+et ajouter le lien en haut du README et dans le CV.
 Prochaine phase : Phase 10 — préparation aux questions d'entretien.
 
 Phases terminées
@@ -27,9 +27,9 @@ Phase 6 : Hedge & P&L Explain
 
 Phase 7 : consolidation des tests
 
-Phase 8 : app Streamlit (déploiement public restant)
+Phase 8 : app Streamlit (prête à déployer)
 
-Phase 9 : README (lien de l'app, GIF et "Ce que j'ai appris" restants)
+Phase 9 : README (lien de l'app à ajouter après le déploiement)
 
 Fichiers existants
 pricing/black_scholes.py
@@ -128,17 +128,20 @@ Première colonne exactement égale à S0
 
 Trajectoires strictement positives
 
-Observations trimestrielles aux mois 3, 6, 9 et 12
+S0 = niveau initial du term sheet (nominal, seuil de rappel, barrière) ;
+spot = niveau du sous-jacent aujourd'hui, point de départ des trajectoires (S0 par défaut)
 
-Rappel si le sous-jacent est supérieur ou égal au seuil de rappel
+4 dates d'observation : T/4, T/2, 3T/4 et T (3, 6, 9 et 12 mois pour T = 1 an)
 
-Coupon trimestriel de 2% du nominal
+Rappel si le sous-jacent est supérieur ou égal au seuil de rappel (100% de S0)
 
-Protection du nominal si le niveau final est supérieur ou égal à 60% de S0
+Coupon de 2% du nominal par date d'observation écoulée, payé au rappel (102, 104, 106 ou 108)
 
-Participation à la baisse sous la barrière de protection
+Sans rappel : nominal seul (100) si le niveau final est supérieur ou égal à 60% de S0
 
-Dates de paiement égales à 0.25, 0.50, 0.75 ou 1.00 an
+Participation à la baisse sous la barrière de protection (nominal × S_T / S0)
+
+Dates de paiement égales à 0.25·T, 0.50·T, 0.75·T ou T
 
 Actualisation continue des cash-flows avec np.exp(-r * t)
 
@@ -157,12 +160,17 @@ implied_vol(prix_marche, S, K, T, r, type_option, sigma_initiale=0.20, q=0, ...)
 
 Newton-Raphson avec contrôle des bornes de non-arbitrage et garde-fou si le pas sort de ]0 ; 5]
 
+Refus explicite si la valeur temps est quasi nulle (< 1e-6) : la vol n'est alors pas identifiable
+
 risk/scenarios.py
 Fonctions existantes :
 
 stress_spot_call, stress_spot_put, stress_vol_call, stress_vol_put
 
-stress_vol_autocall, stress_spot_autocall (même seed avant/après : nombres aléatoires communs)
+stress_vol_autocall, stress_spot_autocall (même seed avant/après : nombres aléatoires communs,
+paramètre spot pour partir du spot du jour avec le term sheet S0)
+
+calculer_variation et comparer_autocall : calcul commun de la variation en € et en %
 
 risk/pnl_explain.py
 Fonctions existantes :
@@ -187,6 +195,11 @@ Périmètre : call et put Black-Scholes uniquement (pas de P&L Explain autocall)
 app.py
 Interface Streamlit, 4 onglets : Pricing & Greeks (+ vol implicite), Autocall Monte Carlo,
 Scénarios de marché, Hedge & P&L Explain. Lancement : streamlit run app.py
+
+5 graphiques Altair (payoff, rappel par date, stress du call/put, décomposition du P&L, balayage).
+Autocall : le strike K sert de niveau initial S0, le spot S est le point de départ ; prix, erreur
+standard et IC affichés en % du nominal. Le stress de l'autocall utilise le même term sheet et la
+même seed que l'onglet Autocall.
 
 Tests existants
 tests/test_payoff.py
@@ -223,6 +236,10 @@ Vol implicite sur plusieurs strikes (dont un call très ITM) et refus d'un prix 
 tests/test_scenarios.py
 Stress spot et vol sur call, put et autocall
 
+Parité call-put respectée par les stress de spot, même variation call/put pour un choc de vol
+
+Stress autocall avec un spot du jour différent de S0
+
 tests/test_pnl_explain.py (34 tests)
 Aucun choc, sens du P&L call/put, cohérence reprix et somme des contributions, quantité
 
@@ -236,6 +253,12 @@ Paramètres invalides
 
 tests/test_app.py
 L'app Streamlit se lance sans exception, cas put + gros choc, message d'erreur si maturité dépassée
+
+Les données envoyées à chaque graphique sont comparées aux modules (Black-Scholes, autocall,
+stress, P&L Explain, balayage) et aux métriques affichées
+
+Les dates du graphique de rappel suivent la maturité, la probabilité de rappel suit le spot,
+le prix avant choc du stress autocall est celui de l'onglet Autocall
 
 tests/test_autocall.py
 Tests validés :
@@ -272,6 +295,16 @@ Cohérence de l’intervalle de confiance
 
 Diminution de l’erreur standard lorsque le nombre de trajectoires augmente
 
+Spot du jour différent de S0 : invariance d'échelle, moins de rappel et plus de perte quand le spot baisse
+
+Rappel à la dernière date avec 4 coupons (108)
+
+Probabilité de rappel à la 1re date contre la formule fermée N(d)
+
+Le moteur de simulation retrouve le prix Black-Scholes d'un call européen et le forward
+
+Valeurs de référence du README
+
 Commande de validation :
 
 python -m pytest tests/test_autocall.py -v
@@ -279,13 +312,34 @@ python -m pytest tests/test_autocall.py -v
 Résultat : tous les tests de la Phase 4 passent.
 
 Dernière étape réalisée
-Phases 6 à 9 le 3 octobre 2026.
+Finalisation le 8 octobre 2026 : relecture complète, corrections et tests de cohérence des graphiques.
 
 Commande de validation : python -m pytest -v (ou pytest)
 
-Résultat : 124 tests passent.
+Résultat : 159 tests passent.
 
-Bugs corrigés :
+Bugs corrigés le 8 octobre :
+
+Onglet Autocall : prix en % du nominal mais erreur standard, IC et convergence en € ;
+tout est maintenant en % du nominal
+
+Libellés "3 mois ... 12 mois" et texte "1 an, trimestriel" figés : ils suivent maintenant la maturité T
+
+Stress de l'autocall : partait du spot S comme niveau initial alors que l'onglet Autocall utilise K ;
+même term sheet (S0 = K, spot = S) et même seed partout
+
+Graphique de rappel figé quand seules les données changeaient (alt.Data) : remplacé par des DataFrame
+
+Tableaux de stress illisibles (clés brutes, probabilités en fraction) : colonnes en français et en %
+
+Vol implicite d'une option sans valeur temps (put très ITM, call très OTM à vol faible) : erreur "hors des bornes"
+ou vol fausse (2.93% au lieu de 1%) ; message "valeur temps quasi nulle" à la place
+
+Bugs corrigés avant :
+
+Rappel anticipé insensible au spot (S servait de S0) : ajout du paramètre spot
+
+Payoff protégé à maturité : nominal seul (100) et non nominal + coupons
 
 theta_put appelait calculer_d1_d2(S, T, K, ...) au lieu de (S, K, T, ...) : theta du put faux
 (+0.07 au lieu de -3.32 sur le cas ATM avec q = 1%), donc P&L Explain du put faux sur le terme theta
@@ -309,20 +363,18 @@ statistiques de risque ainsi qu’une analyse de convergence.
 Exemple validé avec 50 000 trajectoires, S0=100, T=1, r=2 %, sigma=20 %,
 q=0 et seed=42 :
 
-Prix Monte Carlo : environ 102.98
+Prix Monte Carlo : environ 100.88 (102.98 avant la correction du payoff protégé)
 
 Erreur standard : environ 0.017
 
-Intervalle de confiance approximatif à 95% : environ [102.95 ; 103.02]
+Intervalle de confiance approximatif à 95% : environ [100.85 ; 100.91]
 
 Probabilité de rappel anticipé : environ 68.97%
 
 Probabilité de perte en capital : environ 0.47%
 
 Prochaine étape
-Déployer l'app sur Streamlit Community Cloud et ajouter le lien en haut du README.
-
-Ajouter un GIF de démo et rédiger "Ce que j'ai appris".
+Déployer l'app sur Streamlit Community Cloud et ajouter le lien en haut du README et dans le CV.
 
 Phase 10 : questions d'entretien et fiches d'explication de chaque partie.
 
@@ -333,11 +385,11 @@ Pas de P&L Explain pour l'autocall (pas de Greeks analytiques, seulement des str
 
 La couverture delta est statique sur un pas (pas de rebalancement, financement ignoré).
 
-La vol implicite n'est pas identifiable quand la valeur temps est quasi nulle (option très ITM/OTM à vol faible).
+La vol implicite n'est pas identifiable quand la valeur temps est quasi nulle (option très ITM/OTM à vol faible) : le module le signale au lieu de renvoyer une vol arbitraire.
 
 PROJECT_STATUS.docx n'a pas été mis à jour (ce fichier .md fait foi).
 
-Le term sheet reste volontairement simplifié : volatilité et taux constants, observations trimestrielles, absence de smile, de calibration, de risque de crédit et de coûts de couverture.
+Le term sheet reste volontairement simplifié : volatilité et taux constants, 4 dates d'observation, absence de smile, de calibration, de risque de crédit et de coûts de couverture.
 
 Lancer régulièrement la suite complète avec python -m pytest -v pendant les phases suivantes.
 

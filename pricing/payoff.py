@@ -47,7 +47,7 @@ def tracer_payoffs(K: float, C: float, P: float) -> None:
 # C : prime payée pour acheter le call.
 # P : prime payée pour acheter le put.
 
-    valeurs_S_T = np.linspace(50, 150, 200)
+    valeurs_S_T = np.linspace(0.5 * K, 1.5 * K, 200)
 
     payoffs_call = [
     calculer_call_payoff(prix_courant, K)

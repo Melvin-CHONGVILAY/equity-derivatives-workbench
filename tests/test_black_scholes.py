@@ -88,3 +88,21 @@ def test_implied_vol_refuse_prix_hors_bornes():
     # Ni moins que sa valeur intrinsèque actualisée
     with pytest.raises(ValueError, match="bornes"):
         implied_vol(1, 120, 100, 1, 0.02, type_option="call")
+
+
+def test_implied_vol_refuse_valeur_temps_quasi_nulle():
+    # Call très OTM à vol 1% : prix ≈ 1e-60, tous les sigma faibles redonnent ce prix
+    prix_marche = prix_call(100, 120, 1, 0.02, 0.01, 0)
+    with pytest.raises(ValueError, match="Valeur temps quasi nulle"):
+        implied_vol(prix_marche, 100, 120, 1, 0.02, type_option="call")
+
+    # Put très ITM : prix = borne basse K·e^(-rT) - S à la précision machine
+    prix_marche = prix_put(1, 100, 1, 0.02, 0.20, 0)
+    with pytest.raises(ValueError, match="Valeur temps quasi nulle"):
+        implied_vol(prix_marche, 1, 100, 1, 0.02, type_option="put")
+
+
+def test_implied_vol_faible_valeur_temps_encore_identifiable():
+    # Valeur temps de 2e-5 € seulement : la vol reste retrouvée à 0.01 point près
+    prix_marche = prix_call(100, 120, 1, 0.02, 0.04, 0)
+    assert implied_vol(prix_marche, 100, 120, 1, 0.02, type_option="call") == pytest.approx(0.04, abs=1e-4)

@@ -6,6 +6,8 @@ Petit outil Python de pricing et de risque sur options vanille et autocall : Bla
 
 ![Onglet Pricing & Greeks](docs/capture_pricing.png)
 
+![Onglet Autocall Monte Carlo](docs/capture_autocall.png)
+
 ![Onglet Hedge & P&L Explain](docs/capture_pnl_explain.png)
 
 ---
@@ -23,14 +25,14 @@ L'autocall est un produit signature des desks de produits structurés français,
 | Module | Contenu |
 | --- | --- |
 | `pricing/black_scholes.py` | `calculer_d1_d2`, `prix_call`, `prix_put` (avec dividende continu `q`) |
-| `pricing/implied_vol.py` | Volatilité implicite par Newton-Raphson (avec contrôle des bornes de non-arbitrage) |
+| `pricing/implied_vol.py` | Volatilité implicite par Newton-Raphson (avec contrôle des bornes de non-arbitrage et de la valeur temps) |
 | `pricing/payoff.py` | Payoffs et P&L à maturité d'un call / put, graphique |
 | `greeks/greeks.py` | Delta, gamma, vega, theta, rho analytiques ; delta par différence finie |
-| `monte_carlo/autocall.py` | Simulation vectorisée (GBM), autocall trimestriel, prix, erreur standard, IC 95%, probabilités de rappel / perte, convergence |
+| `monte_carlo/autocall.py` | Simulation vectorisée (GBM), autocall à 4 dates d'observation, prix, erreur standard, IC 95%, probabilités de rappel / perte, convergence |
 | `risk/scenarios.py` | Stress tests spot / vol sur call, put et autocall (full repricing) |
 | `risk/pnl_explain.py` | P&L réel vs P&L estimé par Taylor, résidu, couverture delta, balayage des chocs de spot |
 | `app.py` | Interface Streamlit (4 onglets) |
-| `tests/` | Tests pytest de chaque module + test de lancement de l'app |
+| `tests/` | Tests pytest de chaque module + tests de l'app (les graphiques affichent bien les valeurs calculées) |
 
 ## Installation et lancement
 
@@ -72,16 +74,21 @@ Les modules se lancent depuis la racine, par exemple `python -m risk.pnl_explain
 
 Exemple sur un call ATM 1 an (S = K = 100, σ = 20%, r = 2%) : sur un petit mouvement (spot +1%, vol +0.5 pt, 1 jour) le résidu est d'environ 0.1% du P&L réel ; sur un gros choc (spot -15%, vol +5 pts, 5 jours) il monte à environ 7%, seul le reprix complet est alors fiable.
 
-**Autocall simplifié** (nominal = S0) :
+**Autocall simplifié** (nominal = S0, niveau initial fixé à l'émission) :
 
-- Observations à 3, 6, 9 et 12 mois ; rappel si le sous-jacent est ≥ S0
-- Coupon de 2% du nominal par trimestre écoulé, payé au rappel
-- À maturité sans rappel : nominal + coupons si S_T ≥ 60% de S0, sinon nominal × S_T / S0
+- 4 dates d'observation : T/4, T/2, 3T/4 et T (3, 6, 9 et 12 mois pour T = 1 an) ; rappel si le sous-jacent est ≥ 100% de S0
+- Coupon de 2% du nominal par date d'observation écoulée, payé au rappel (102, 104, 106 ou 108)
+- À maturité sans rappel : nominal seul (100) si S_T ≥ 60% de S0, sinon nominal × S_T / S0 (perte en capital)
 - Prix = moyenne des cash-flows actualisés (`e^(-r·t)` à la date de paiement)
+- `spot` = niveau du sous-jacent aujourd'hui, point de départ des trajectoires (S0 par défaut). Seul le rapport spot / S0 compte : un spot sous S0 réduit le rappel et augmente le risque de perte
 
-Avec S0 = 100, r = 2%, σ = 20%, 50 000 trajectoires et seed = 42 : prix ≈ 102.98 (erreur standard ≈ 0.017), rappel anticipé ≈ 69%, perte en capital ≈ 0.5%.
+Avec S0 = spot = 100, T = 1, r = 2%, σ = 20%, 50 000 trajectoires et seed = 42 : prix ≈ 100.88% du nominal (erreur standard ≈ 0.017), rappel anticipé ≈ 69%, perte en capital ≈ 0.5%. Avec un spot à 90 : prix ≈ 99.34%, rappel anticipé ≈ 36%.
 
-Pour les stress tests de l'autocall, les prix avant et après choc utilisent la **même seed et le même nombre de trajectoires** (nombres aléatoires communs) : la variation mesure l'effet du choc et pas le bruit Monte Carlo.
+Dans l'app, le strike K de la barre latérale sert de niveau initial S0 de l'autocall et le spot S de point de départ ; prix, erreur standard et IC sont affichés en % du nominal.
+
+Avec ces paramètres, le drift du log-prix r - q - σ²/2 est nul : les probabilités de rappel ne dépendent alors pas de T, mais le prix et la perte en capital, oui. Ce n'est pas un bug : avec r = 3% ou un spot différent de S0, les probabilités bougent avec T.
+
+Pour les stress tests de l'autocall, les prix avant et après choc utilisent la **même seed et le même nombre de trajectoires** (nombres aléatoires communs) : la variation mesure l'effet du choc et pas le bruit Monte Carlo. Le term sheet (S0) ne bouge pas, seul le spot de départ est choqué.
 
 ## Hypothèses et limites du modèle
 
@@ -90,7 +97,7 @@ Le projet est volontairement limité. Ce qu'il ne fait pas, et qu'un vrai pricer
 - Volatilité constante : pas de smile ni de surface de vol, pas de vol stochastique
 - Pas de calibration sur des prix cotés
 - Taux constant, pas de courbe de taux ; dividende continu constant
-- Autocall simplifié : observations discrètes trimestrielles, term sheet fixe (coupon non calibré pour pricer au pair, d'où un prix > 100)
+- Autocall simplifié : 4 observations discrètes, term sheet fixe (coupon non calibré pour pricer au pair, d'où un prix légèrement > 100%)
 - Pas de risque de crédit de l'émetteur, de funding ni de XVA
 - Pas de coûts de transaction ni de coûts de couverture
 - Couverture delta statique sur un seul pas (pas de rebalancement)
@@ -102,7 +109,9 @@ Le projet est volontairement limité. Ce qu'il ne fait pas, et qu'un vrai pricer
 python -m pytest -v
 ```
 
-Les tests couvrent la parité call-put, les cas limites (vol quasi nulle, maturité très courte, spot = strike, paramètres invalides), la volatilité implicite, les Greeks analytiques contre différences finies, l'autocall (cas déterministes, reproductibilité, convergence), les stress tests et le P&L Explain (sens du P&L, unités de chaque Greek, qualité de l'approximation, couverture delta).
+Les tests couvrent la parité call-put, les cas limites (vol quasi nulle, maturité très courte, spot = strike, paramètres invalides), la volatilité implicite, les Greeks analytiques contre différences finies, l'autocall (cas déterministes, reproductibilité, convergence, probabilité de rappel contre la formule fermée, moteur de simulation contre Black-Scholes), les stress tests (parité call-put après choc) et le P&L Explain (sens du P&L, unités de chaque Greek, qualité de l'approximation, couverture delta).
+
+Les tests de l'app vérifient que chaque graphique reçoit exactement les valeurs calculées par les modules et affichées dans les métriques.
 
 ## Déploiement (Streamlit Community Cloud)
 

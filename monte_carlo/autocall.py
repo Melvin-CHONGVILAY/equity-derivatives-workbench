@@ -17,8 +17,12 @@ def simuler_trajectoires(S0, T, r, sigma, q=0.0, n_trajectoires=100, n_pas=12, s
 
     return trajectoires
 
-def tracer_trajectoires(trajectoires, T, n_a_tracer=10):
+def tracer_trajectoires(trajectoires, T, n_a_tracer=10, seuil_rappel=None):
     n_pas = trajectoires.shape[1] - 1
+
+    # Par défaut, la ligne de référence est le niveau de départ des trajectoires
+    if seuil_rappel is None:
+        seuil_rappel = trajectoires[0, 0]
     dates = np.linspace(0, T, n_pas + 1)
 
     for trajectoire in trajectoires[:n_a_tracer, :]:
@@ -28,7 +32,8 @@ def tracer_trajectoires(trajectoires, T, n_a_tracer=10):
     plt.ylabel("Prix du sous-jacent")
     plt.title("Trajectoires simulées du sous-jacent")
     plt.grid()
-    plt.axhline(y=100, color="grey", linestyle="--")
+    plt.axhline(y=seuil_rappel, color="grey", linestyle="--", label="Seuil de rappel")
+    plt.legend()
     plt.show()
 
 def autocall(trajectoires, S0=100, seuil_rappel=100):
@@ -41,8 +46,8 @@ def autocall(trajectoires, S0=100, seuil_rappel=100):
     nombre_coupons = premier_rappel+1
     nombre_coupons_rappel = np.where(est_rappelle, nombre_coupons, 0)
 
-    coupon_trimestriel = 0.02*S0
-    remboursement_rappel = S0+coupon_trimestriel*nombre_coupons_rappel
+    coupon = 0.02 * S0
+    remboursement_rappel = S0 + coupon * nombre_coupons_rappel
     tableau_rappel_coupon = np.where(est_rappelle, remboursement_rappel, 0)
 
     prix_final = trajectoires[:, -1]
@@ -50,7 +55,7 @@ def autocall(trajectoires, S0=100, seuil_rappel=100):
 
     arrive_a_maturite = ~est_rappelle
     # Jamais rappelé (donc S_T < seuil) mais au-dessus de la barrière : nominal seul, sans coupon.
-    # Si S_T >= seuil à 12 mois, c'est un rappel et les 4 coupons sont payés plus haut.
+    # Si S_T >= seuil à la dernière date, c'est un rappel et les 4 coupons sont payés plus haut.
     remboursement_protege = S0
     remboursement_perte = (prix_final / S0) * S0
     remboursement_maturite_brut = np.where(condition_protection, remboursement_protege, remboursement_perte)
@@ -277,6 +282,8 @@ def analyser_convergence(
         })
 
     return resultats_convergence
+
+
 if __name__ == "__main__":
     estimation = valoriser_autocall(
         S0=100,

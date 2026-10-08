@@ -1,6 +1,6 @@
 import math
 import pytest
-from pricing.black_scholes import prix_call, prix_put
+from pricing.black_scholes import prix_call
 from greeks.greeks import delta_call, gamma_call, vega_call, theta_call, rho_call
 from risk.pnl_explain import (
     pnl_explain,

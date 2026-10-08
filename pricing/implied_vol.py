@@ -15,9 +15,15 @@ def implied_vol(prix_marche, S, K, T, r, type_option, sigma_initiale=0.20, q=0, 
     else:
         raise ValueError("type_option doit etre 'call' ou 'put'")
 
-    # Hors de ces bornes (arbitrage), aucune volatilité ne redonne le prix
-    if not (borne_basse < prix_marche < borne_haute):
+    # Hors de ces bornes (arbitrage), aucune volatilité ne redonne le prix.
+    # Petite tolérance en bas : un prix Black-Scholes peut tomber sur la borne à l'arrondi près
+    if prix_marche < borne_basse - 1e-6 or prix_marche >= borne_haute:
         raise ValueError("Prix hors des bornes de non-arbitrage : pas de vol implicite")
+
+    # Valeur temps quasi nulle (option très ITM ou très OTM) : le prix ne dépend
+    # presque plus de la vol, plusieurs sigma redonnent le même prix
+    if prix_marche - borne_basse < 1e-6:
+        raise ValueError("Valeur temps quasi nulle : la vol implicite n'est pas identifiable")
 
     sigma = sigma_initiale
     for _ in range(max_iterations):
