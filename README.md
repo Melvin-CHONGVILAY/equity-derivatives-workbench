@@ -2,7 +2,7 @@
 
 Petit outil Python de pricing et de risque sur options vanille et autocall : Black-Scholes, Greeks, Monte Carlo, stress tests et **P&L Explain** (P&L réel par reprix complet vs P&L estimé par les Greeks).
 
-**App en ligne :** _lien à ajouter après le déploiement sur Streamlit Community Cloud_
+**App en ligne :** (https://equity-derivatives-workbench-9hndrw3hacnh6bsmfahhxk.streamlit.app/)
 
 ![Onglet Pricing & Greeks](docs/capture_pricing.png)
 
