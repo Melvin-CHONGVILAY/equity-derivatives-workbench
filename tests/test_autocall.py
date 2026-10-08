@@ -43,7 +43,7 @@ def test_autocall_maturite_protege():
 
     cashflow_final = autocall(trajectoires)
 
-    assert np.allclose(cashflow_final, [108])
+    assert np.allclose(cashflow_final, [100])
 
 def test_autocall_maturite_perte():
     trajectoires = np.array([
@@ -61,7 +61,7 @@ def test_autocall_barriere_protection_egale():
 
     cashflow_final = autocall(trajectoires)
 
-    assert np.allclose(cashflow_final, [108])
+    assert np.allclose(cashflow_final, [100])
 
 def test_cashflow_actualise():
     cashflow_final = 108

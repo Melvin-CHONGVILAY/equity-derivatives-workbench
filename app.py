@@ -5,6 +5,7 @@
 import numpy as np
 import altair as alt
 import streamlit as st
+import pandas as pd
 
 # Les graphiques de l'app sont faits avec Altair (dessinés par le navigateur) et pas
 # avec matplotlib : matplotlib n'est pas thread-safe, et Streamlit relance le script
@@ -44,14 +45,13 @@ type_option = st.sidebar.radio("Option vanille", ["call", "put"], horizontal=Tru
 
 # Le Monte Carlo est long : on garde le résultat en cache tant que les paramètres ne changent pas
 @st.cache_data
-def autocall_cache(S0, T, r, sigma, q, n_trajectoires, seed):
-    return valoriser_autocall(S0, T, r, sigma, q, n_trajectoires=n_trajectoires, seed=seed)
+def autocall_cache(S0, T, r, sigma, q, n_trajectoires, seed, spot):
+    return valoriser_autocall(S0, T, r, sigma, q, n_trajectoires=n_trajectoires, seed=seed, spot=spot)
 
 
 @st.cache_data
-def convergence_cache(S0, T, r, sigma, q, seed):
-    return analyser_convergence(S0, T, r, sigma, q, seed=seed)
-
+def convergence_cache(S0, T, r, sigma, q, seed, spot):
+    return analyser_convergence(S0, T, r, sigma, q, seed=seed, spot=spot)
 
 @st.cache_data
 def stress_autocall_cache(S0, T, r, sigma, q, n_trajectoires, seed, chocs_spot, chocs_vol):
@@ -173,10 +173,16 @@ with onglet_autocall:
     )
     seed = col2.number_input("Seed", min_value=0, value=42, step=1)
 
-    resultat = autocall_cache(S, T, r, sigma, q, n_trajectoires, seed)
+    # Le strike K de la barre latérale sert de niveau initial S0 de l'autocall (fixé à l'émission) :
+    # seuil de rappel (100 %) et barrière (60 %) sont en % de K. Le spot S est le niveau du jour,
+    # point de départ des trajectoires. C'est le rapport S / K qui fait bouger les probabilités.
+    st.caption(
+        f"Niveau initial de l'autocall = strike K = {K:g}. Spot du jour = {S:g}, soit {S / K * 100:.1f} % du niveau initial."
+    )
+    resultat = autocall_cache(K, T, r, sigma, q, n_trajectoires, seed, S)
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("Prix Monte Carlo", f"{resultat['prix']:.3f}")
+    col1.metric("Prix (% du nominal)", f"{resultat['prix'] / K * 100:.2f} %", help=f"Valeur aujourd'hui de l'autocall pour un nominal de {K:g} € : {resultat['prix']:.2f} €")
     col2.metric("Erreur standard", f"{resultat['erreur_standard']:.4f}")
     col3.metric("IC 95%", f"[{resultat['borne_basse_95']:.2f} ; {resultat['borne_haute_95']:.2f}]")
 
@@ -196,7 +202,7 @@ with onglet_autocall:
 
     st.subheader("Convergence")
     st.write("L'erreur standard diminue en 1/√N : 4 fois plus de trajectoires divisent l'erreur par 2.")
-    st.dataframe(convergence_cache(S, T, r, sigma, q, seed), hide_index=True, width="stretch")
+    st.dataframe(convergence_cache(K, T, r, sigma, q, seed, S), hide_index=True, width="stretch")
 
 
 # --- Onglet 3 : Scénarios de marché -----------------------------------------

@@ -49,7 +49,9 @@ def autocall(trajectoires, S0=100, seuil_rappel=100):
     condition_protection = prix_final >= 0.6*S0
 
     arrive_a_maturite = ~est_rappelle
-    remboursement_protege = S0 + 4 * coupon_trimestriel
+    # Jamais rappelé (donc S_T < seuil) mais au-dessus de la barrière : nominal seul, sans coupon.
+    # Si S_T >= seuil à 12 mois, c'est un rappel et les 4 coupons sont payés plus haut.
+    remboursement_protege = S0
     remboursement_perte = (prix_final / S0) * S0
     remboursement_maturite_brut = np.where(condition_protection, remboursement_protege, remboursement_perte)
 
@@ -168,7 +170,8 @@ def valoriser_autocall(
     n_trajectoires=50000,
     n_pas=12,
     seed=42,
-    seuil_rappel=None
+    seuil_rappel=None,
+    spot=None
 ):
     if n_pas != 12:
         raise ValueError(
@@ -183,8 +186,18 @@ def valoriser_autocall(
     if seuil_rappel is None:
         seuil_rappel = S0
 
+    # S0 = niveau initial fixé à l'émission (nominal, seuil de rappel, barrière 60 %).
+    # spot = niveau du sous-jacent aujourd'hui, point de départ des trajectoires.
+    if spot is None:
+        spot = S0
+
+    if spot <= 0:
+        raise ValueError(
+            "Le spot doit être strictement positif."
+        )
+
     trajectoires = simuler_trajectoires(
-        S0=S0,
+        S0=spot,
         T=T,
         r=r,
         sigma=sigma,
@@ -239,7 +252,8 @@ def analyser_convergence(
     sigma,
     q=0.0,
     nombres_trajectoires=(1000, 5000, 10000, 50000),
-    seed=42
+    seed=42,
+    spot=None
 ):
     resultats_convergence = []
 
@@ -252,7 +266,8 @@ def analyser_convergence(
             q=q,
             n_trajectoires=n_trajectoires,
             n_pas=12,
-            seed=seed
+            seed=seed,
+            spot=spot
         )
 
         resultats_convergence.append({
