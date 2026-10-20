@@ -65,11 +65,7 @@ def autocall(trajectoires, S0=100, seuil_rappel=100):
     cashflow_final = tableau_rappel_coupon + tableau_maturite
     return cashflow_final
 
-def dates_paiement_autocall(
-    trajectoires,
-    seuil_rappel=100,
-    T=1.0
-):
+def dates_paiement_autocall(trajectoires, seuil_rappel=100, T=1.0):
     n_trajectoires = trajectoires.shape[0]
 
     # Par défaut, le paiement intervient à maturité.
@@ -99,13 +95,7 @@ def cashflow_final_actualise(cashflow_final, r, t):
     return resultats_actualises
 
 
-def autocall_actualise(
-    trajectoires,
-    r,
-    S0=100,
-    seuil_rappel=100,
-    T=1.0
-):
+def autocall_actualise(trajectoires, r, S0=100, seuil_rappel=100, T=1.0):
     cashflows = autocall(
         trajectoires,
         S0=S0,
@@ -126,11 +116,7 @@ def autocall_actualise(
 
     return resultats_actualises
 
-def statistiques_autocall(
-    trajectoires,
-    S0=100,
-    seuil_rappel=100
-):
+def statistiques_autocall(trajectoires, S0=100, seuil_rappel=100):
     prix_observation = trajectoires[:, [3, 6, 9, 12]]
 
     condition_rappel = prix_observation >= seuil_rappel
