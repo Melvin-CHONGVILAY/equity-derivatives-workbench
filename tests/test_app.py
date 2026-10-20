@@ -2,8 +2,9 @@ import pytest
 from pathlib import Path
 
 from pricing.black_scholes import prix_call, prix_put
+from pricing.implied_vol import implied_vol
 from monte_carlo.autocall import valoriser_autocall
-from risk.scenarios import stress_spot_call
+from risk.scenarios import stress_spot_call, stress_spot_vol_option, stress_spot_vol_autocall
 from risk.pnl_explain import pnl_explain, balayage_chocs_spot
 
 # Tests de l'interface : l'app tourne de bout en bout sans exception, et les
@@ -237,3 +238,107 @@ def test_graphique_balayage_coherent_avec_le_module():
     # Pas de choc, pas de P&L, quelle que soit la courbe
     au_centre = table[table["Choc de spot (%)"].abs() < 1e-9]
     assert au_centre["P&L (€)"].tolist() == pytest.approx([0.0, 0.0, 0.0])
+
+
+def test_vol_implicite_differente_de_sigma():
+    # Par défaut on retrouve σ ; avec un prix de marché de 10, la vol implicite est 22.77 %
+    app = lancer_app()
+    app.number_input[0].set_value(10.0)
+    app.run()
+
+    vol = valeur_metrique(app, "Volatilité implicite")
+    assert vol == pytest.approx(implied_vol(10.0, S, K, T, r, "call") * 100, abs=0.005)
+    assert vol == pytest.approx(22.77, abs=0.01)
+    assert any("+2.77 pts" in texte.value for texte in app.caption)
+
+
+def test_autocall_athena_rappel_total_et_ecart_type():
+    app = lancer_app()
+    attendu = valoriser_autocall(K, T, r, sigma, q, n_trajectoires=50000, seed=42, spot=S)
+    table = donnees_graphique(app, "Date")
+
+    assert any("Autocall Athena" in texte.value for texte in app.markdown)
+    # Rappel total = les 4 barres, maturité comprise (72.7 % contre 69.0 % de rappel anticipé)
+    assert valeur_metrique(app, "Probabilité de rappel total") == pytest.approx(sum(table["Probabilité (%)"]), abs=0.05)
+    assert valeur_metrique(app, "Probabilité de rappel total") == pytest.approx(attendu["probabilite_rappel_total"] * 100, abs=0.05)
+    assert valeur_metrique(app, "Écart-type des cash-flows") == pytest.approx(attendu["ecart_type"] / K * 100, abs=0.005)
+
+
+def test_convergence_va_jusqu_a_100000_trajectoires():
+    app = lancer_app()
+    convergence = app.dataframe[1].value
+
+    assert convergence["Trajectoires"].tolist() == [1000, 5000, 10000, 50000, 100000]
+    # La ligne du nombre de trajectoires choisi (50 000 par défaut) redonne le prix affiché
+    ligne = convergence[convergence["Trajectoires"] == 50000].iloc[0]
+    assert ligne["Prix (% du nominal)"] == pytest.approx(valeur_metrique(app, "Prix (% du nominal)"), abs=0.005)
+
+
+def test_coupon_modifiable_partout():
+    app = lancer_app()
+    app.number_input(key="coupon").set_value(3.0)
+    app.run()
+
+    attendu = valoriser_autocall(K, T, r, sigma, q, n_trajectoires=50000, seed=42, spot=S, coupon=0.03)
+    assert valeur_metrique(app, "Prix (% du nominal)") == pytest.approx(attendu["prix"] / K * 100, abs=0.005)
+    assert any("103 / 106 / 109 / 112" in texte.value for texte in app.markdown)
+
+    # Le stress de l'autocall utilise le même coupon
+    stress = valoriser_autocall(K, T, r, sigma, q, n_trajectoires=20000, seed=42, spot=S, coupon=0.03)
+    assert app.dataframe[3].value["Prix avant (%)"].tolist() == pytest.approx([stress["prix"] / K * 100] * len(app.dataframe[3].value), abs=0.005)
+
+
+def test_scenarios_personnalises_dans_les_deux_tableaux():
+    app = lancer_app()
+    app.number_input(key="perso_2_spot").set_value(-25.0)
+    app.number_input(key="perso_2_vol").set_value(10.0)
+    app.run()
+
+    tableau = app.dataframe[2].value
+    tableau_autocall = app.dataframe[3].value
+    noms = ["perso 1 : spot -15% / vol +5 pts", "perso 2 : spot -25% / vol +10 pts"]
+    assert tableau["Scénario"].tolist()[-2:] == noms
+    assert tableau_autocall["Scénario"].tolist()[-2:] == noms
+
+    attendu = stress_spot_vol_option(S, K, T, r, sigma, q, "call", -0.25, 0.10)
+    assert tableau.iloc[-1]["Variation (€)"] == pytest.approx(attendu["variation_euros"], abs=1e-4)
+
+    attendu = stress_spot_vol_autocall(K, T, r, sigma, q, -0.15, 0.05, n_trajectoires=20000, seed=42, spot=S)
+    ligne = tableau_autocall.iloc[-2]
+    assert ligne["Prix après (%)"] == pytest.approx(attendu["prix_apres"] / K * 100, abs=0.005)
+    # Variation en € pour le nominal investi (1 000 € par défaut)
+    assert ligne["Variation (€)"] == pytest.approx(attendu["variation_euros"] / K * 1000, abs=0.005)
+
+    # Le graphique contient aussi les lignes personnalisées
+    graphique = donnees_graphique(app, "Scénario")
+    assert graphique["Scénario"].tolist() == tableau["Scénario"].tolist()
+
+
+def test_scenario_personnalise_vol_negative_ignore():
+    app = lancer_app()
+    app.number_input(key="perso_1_vol").set_value(-25.0)
+    app.run()
+
+    assert not app.exception
+    assert any("perso 1 ignoré" in alerte.value for alerte in app.warning)
+    assert not any(nom.startswith("perso 1") for nom in app.dataframe[2].value["Scénario"])
+    assert not any(nom.startswith("perso 1") for nom in app.dataframe[3].value["Scénario"])
+
+
+def test_variations_en_pourcentage():
+    app = lancer_app()
+    app.sidebar.radio[0].set_value("put")
+    app.radio(key="unite_variations").set_value("%")
+    app.run()
+
+    tableau = app.dataframe[2].value
+    assert "Variation (%)" in tableau.columns and "Variation (€)" not in tableau.columns
+    attendu = stress_spot_vol_option(S, K, T, r, sigma, q, "put", -0.15, 0.05)
+    assert tableau.iloc[-2]["Variation (%)"] == pytest.approx(attendu["variation_pourcentage"], abs=0.005)
+
+    graphique = donnees_graphique(app, "Scénario")
+    assert graphique["Variation (%)"].tolist() == pytest.approx(tableau["Variation (%)"].tolist())
+
+    tableau_autocall = app.dataframe[3].value
+    attendu = stress_spot_vol_autocall(K, T, r, sigma, q, -0.15, 0.05, n_trajectoires=20000, seed=42, spot=S)
+    assert tableau_autocall.iloc[-2]["Variation (%)"] == pytest.approx(attendu["variation_pourcentage"], abs=0.005)

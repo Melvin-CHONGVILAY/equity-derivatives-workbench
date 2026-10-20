@@ -29,6 +29,13 @@ def test_delta_put_num():
     delta_num = delta_put_num(S, K, T, r, sigma, q, h)
     assert delta_num == pytest.approx(delta_ana, abs=1e-3)
 
+@pytest.mark.parametrize("delta_num, delta_ana", [(delta_call_num, delta_call), (delta_put_num, delta_put)])
+def test_delta_num_difference_centree(delta_num, delta_ana):
+    # Avec h = 0.01, la différence avant se trompe d'environ 1e-4 (erreur en h),
+    # la différence centrée de moins de 1e-7 (erreur en h²)
+    S, K, T, r, sigma, q = 100, 100, 1, 0.02, 0.20, 0
+    assert delta_num(S, K, T, r, sigma, q, 0.01) == pytest.approx(delta_ana(S, K, T, r, sigma, q), abs=1e-7)
+
 def test_delta_call_positif():
     S = 100
     K = 100

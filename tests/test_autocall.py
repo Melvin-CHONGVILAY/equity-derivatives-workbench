@@ -351,3 +351,45 @@ def test_dates_paiement_suivent_la_maturite():
                              [100, 98, 96, 99, 97, 99, 95, 91, 86, 70, 62, 59, 60]])
     resultat_date_paiement = dates_paiement_autocall(trajectoires, T=2.0)
     assert np.allclose(resultat_date_paiement, [0.5, 1.0, 1.5, 2.0])
+
+@pytest.mark.parametrize("coupon, attendu", [(0.0, [100, 100, 100]), (0.02, [102, 104, 108]), (0.05, [105, 110, 120])])
+def test_autocall_coupon_parametrable(coupon, attendu):
+    # Rappel à la 1re, à la 2e et à la dernière date : coupon × nombre de dates écoulées
+    trajectoires = np.array([[100, 98, 96, 101, 97, 99, 95, 91, 99, 94, 99, 98, 97],
+                             [100, 98, 96, 99, 97, 99, 103, 91, 99, 94, 99, 98, 97],
+                             [100, 98, 96, 99, 97, 99, 95, 91, 99, 94, 99, 98, 101]])
+
+    assert np.allclose(autocall(trajectoires, coupon=coupon), attendu)
+
+def test_prix_autocall_monte_avec_le_coupon():
+    parametres = dict(S0=100, T=1, r=0.02, sigma=0.20, n_trajectoires=20000, seed=42)
+    sans_coupon = valoriser_autocall(**parametres, coupon=0.0)
+    par_defaut = valoriser_autocall(**parametres)
+    gros_coupon = valoriser_autocall(**parametres, coupon=0.04)
+
+    assert sans_coupon["prix"] < par_defaut["prix"] < gros_coupon["prix"]
+    assert par_defaut["prix"] == pytest.approx(valoriser_autocall(**parametres, coupon=0.02)["prix"])
+    # Le coupon ne change pas les probabilités : elles ne dépendent que des trajectoires
+    assert sans_coupon["probabilite_rappel_total"] == gros_coupon["probabilite_rappel_total"]
+
+def test_ecart_type_et_erreur_standard():
+    # L'écart-type mesure la dispersion des cash-flows (le risque du produit),
+    # l'erreur standard la précision du prix : écart-type / racine(N)
+    resultat = valoriser_autocall(S0=100, T=1, r=0.02, sigma=0.20, n_trajectoires=50000, seed=42)
+
+    assert resultat["ecart_type"] == pytest.approx(resultat["erreur_standard"] * math.sqrt(50000))
+    assert resultat["ecart_type"] == pytest.approx(3.79, abs=0.01)
+
+def test_rappel_total_egal_somme_des_dates():
+    resultat = valoriser_autocall(S0=100, T=1, r=0.02, sigma=0.20, n_trajectoires=50000, seed=42)
+    somme = sum(resultat[f"probabilite_rappel_mois_{m}"] for m in (3, 6, 9, 12))
+
+    assert resultat["probabilite_rappel_total"] == pytest.approx(somme)
+    assert resultat["probabilite_rappel_total"] == pytest.approx(resultat["probabilite_rappel_anticipe"] + resultat["probabilite_rappel_mois_12"])
+    assert resultat["probabilite_rappel_total"] == pytest.approx(0.727, abs=0.001)
+
+def test_convergence_avec_coupon():
+    convergence = analyser_convergence(S0=100, T=1, r=0.02, sigma=0.20, nombres_trajectoires=(1000, 5000), coupon=0.03)
+    direct = valoriser_autocall(S0=100, T=1, r=0.02, sigma=0.20, n_trajectoires=5000, coupon=0.03)
+
+    assert convergence[1]["prix"] == pytest.approx(direct["prix"])

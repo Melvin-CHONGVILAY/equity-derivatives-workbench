@@ -18,7 +18,8 @@ from monte_carlo.autocall import valoriser_autocall, analyser_convergence
 from risk.scenarios import (
     stress_spot_call, stress_spot_put,
     stress_vol_call, stress_vol_put,
-    stress_spot_autocall, stress_vol_autocall
+    stress_spot_autocall, stress_vol_autocall,
+    stress_spot_vol_option, stress_spot_vol_autocall
 )
 from risk.pnl_explain import (
     prix_option, greeks_option,
@@ -27,7 +28,7 @@ from risk.pnl_explain import (
 
 st.set_page_config(page_title="Equity Derivatives Workbench", layout="wide")
 st.title("Equity Derivatives Pricing & Risk Workbench")
-st.caption("Black-Scholes, Greeks, autocall Monte Carlo, stress tests et P&L Explain")
+st.caption("Black-Scholes, Greeks, autocall Athena en Monte Carlo, stress tests et P&L Explain")
 
 
 # --- Paramètres de marché ---------------------------------------------------
@@ -38,36 +39,44 @@ S = st.sidebar.number_input("Spot S", min_value=1.0, value=100.0, step=1.0)
 K = st.sidebar.number_input("Strike K", min_value=1.0, value=100.0, step=1.0)
 T = st.sidebar.number_input("Maturité T (années)", min_value=0.05, value=1.0, step=0.25)
 r = st.sidebar.number_input("Taux r (%)", value=2.0, step=0.25) / 100
-sigma = st.sidebar.number_input("Volatilité σ (%)", min_value=1.0, value=20.0, step=1.0) / 100
+sigma = st.sidebar.number_input(
+    "Volatilité σ (%)", min_value=1.0, value=20.0, step=1.0,
+    help="Vol utilisée pour pricer (supposée constante jusqu'à maturité). En pratique on y met la vol "
+         "implicite cotée par le marché, pas la vol réalisée historique."
+) / 100
 q = st.sidebar.number_input("Dividende q (%)", min_value=0.0, value=0.0, step=0.25) / 100
 type_option = st.sidebar.radio("Option vanille", ["call", "put"], horizontal=True)
 
 
 # Le Monte Carlo est long : on garde le résultat en cache tant que les paramètres ne changent pas
 @st.cache_data
-def autocall_cache(S0, T, r, sigma, q, n_trajectoires, seed, spot):
-    return valoriser_autocall(S0, T, r, sigma, q, n_trajectoires=n_trajectoires, seed=seed, spot=spot)
+def autocall_cache(S0, T, r, sigma, q, n_trajectoires, seed, spot, coupon):
+    return valoriser_autocall(S0, T, r, sigma, q, n_trajectoires=n_trajectoires, seed=seed, spot=spot, coupon=coupon)
 
 
 @st.cache_data
-def convergence_cache(S0, T, r, sigma, q, seed, spot):
-    return analyser_convergence(S0, T, r, sigma, q, seed=seed, spot=spot)
+def convergence_cache(S0, T, r, sigma, q, seed, spot, coupon, nombres_trajectoires):
+    return analyser_convergence(S0, T, r, sigma, q, nombres_trajectoires=nombres_trajectoires,
+                                seed=seed, spot=spot, coupon=coupon)
 
 
 @st.cache_data
-def stress_autocall_cache(S0, T, r, sigma, q, n_trajectoires, seed, spot, chocs_spot, chocs_vol):
+def stress_autocall_cache(S0, T, r, sigma, q, n_trajectoires, seed, spot, coupon, chocs_spot, chocs_vol, chocs_perso):
     lignes = []
     for choc in chocs_spot:
-        res = stress_spot_autocall(S0, T, r, sigma, q, choc, n_trajectoires, seed, spot=spot)
+        res = stress_spot_autocall(S0, T, r, sigma, q, choc, n_trajectoires, seed, spot=spot, coupon=coupon)
         lignes.append({"scénario": f"spot {choc * 100:+.0f}%", **res})
     for choc in chocs_vol:
-        res = stress_vol_autocall(S0, T, r, sigma, q, choc, n_trajectoires, seed, spot=spot)
+        res = stress_vol_autocall(S0, T, r, sigma, q, choc, n_trajectoires, seed, spot=spot, coupon=coupon)
         lignes.append({"scénario": f"vol {choc * 100:+.0f} pts", **res})
+    for nom, choc_spot, choc_vol in chocs_perso:
+        res = stress_spot_vol_autocall(S0, T, r, sigma, q, choc_spot, choc_vol, n_trajectoires, seed, spot=spot, coupon=coupon)
+        lignes.append({"scénario": nom, **res})
     return lignes
 
 
 onglet_pricing, onglet_autocall, onglet_scenarios, onglet_pnl = st.tabs([
-    "Pricing & Greeks", "Autocall Monte Carlo", "Scénarios de marché", "Hedge & P&L Explain"
+    "Pricing & Greeks", "Autocall Athena", "Scénarios de marché", "Hedge & P&L Explain"
 ])
 
 
@@ -152,11 +161,20 @@ with onglet_pricing:
         st.caption("Le spot actuel est hors de la zone affichée (50% à 150% du strike).")
 
     st.subheader("Volatilité implicite")
-    st.write("Le marché cote les options en vol : on retrouve σ à partir d'un prix observé (Newton-Raphson).")
+    st.write(
+        "Le marché cote les options en vol : on retrouve la vol qui, mise dans Black-Scholes, "
+        "redonne le prix observé (Newton-Raphson)."
+    )
+    st.caption(
+        "Par défaut, le prix proposé est le prix Black-Scholes calculé avec la σ de la barre latérale : "
+        "on retrouve donc exactement σ (contrôle aller-retour). Saisis un prix de marché différent "
+        "pour obtenir une autre vol implicite."
+    )
     prix_marche = st.number_input("Prix de marché observé", min_value=0.0, value=float(prix), step=0.1, format="%.4f")
     try:
         vol_implicite = implied_vol(prix_marche, S, K, T, r, type_option, q=q)
         st.metric("Volatilité implicite", f"{vol_implicite * 100:.2f} %")
+        st.caption(f"Écart avec la σ de la barre latérale : {(vol_implicite - sigma) * 100:+.2f} pts")
     except ValueError as erreur:
         # Prix saisi impossible ou sans valeur temps : on prévient sans bloquer l'app
         st.warning(str(erreur))
@@ -167,20 +185,30 @@ with onglet_pricing:
 # --- Onglet 2 : Autocall Monte Carlo ----------------------------------------
 
 with onglet_autocall:
+    col1, col2, col3, col4 = st.columns(4)
+    choix_trajectoires = [1000, 5000, 10000, 50000, 100000]
+    n_trajectoires = col1.select_slider("Nombre de trajectoires", options=choix_trajectoires, value=50000)
+    seed = col2.number_input("Seed", min_value=0, value=42, step=1)
+    coupon = col3.number_input("Coupon par date d'observation (%)", min_value=0.0, max_value=50.0,
+                               value=2.0, step=0.25, key="coupon") / 100
+    nominal = col4.number_input("Nominal investi (€)", min_value=1.0, value=1000.0, step=100.0, key="nominal")
+
     # 4 dates d'observation : T/4, T/2, 3T/4 et T (colonnes 3, 6, 9 et 12 des trajectoires)
     dates = [f"{round(T * 3 * k, 2):g} mois" for k in (1, 2, 3, 4)]
+    remboursements = [f"{100 + k * coupon * 100:g}" for k in (1, 2, 3, 4)]
     st.write(
-        f"Autocall simplifié de maturité {T:g} an{'s' if T >= 2 else ''}, nominal = niveau initial. "
-        f"Observations à {', '.join(dates)} : rappel si le sous-jacent est ≥ 100% du niveau initial, "
-        "avec un coupon de 2% du nominal par date d'observation écoulée. Sans rappel, le nominal est "
-        "remboursé si S_T ≥ 60% du niveau initial, sinon l'investisseur subit la baisse du sous-jacent. "
+        f"**Autocall Athena** de maturité {T:g} an{'s' if T >= 2 else ''}, observé à {', '.join(dates)}. "
+        "À chaque date, si le sous-jacent est ≥ 100% du niveau initial, le produit est remboursé par anticipation : "
+        f"nominal + {coupon * 100:g}% par date écoulée, coupons mis en mémoire et payés au rappel "
+        f"({' / '.join(remboursements)} % du nominal). "
+        "Sans rappel, le nominal est remboursé si S_T ≥ 60% du niveau initial, sinon l'investisseur subit "
+        "la baisse du sous-jacent. Contrairement à un Phoenix, rien n'est versé tant qu'il n'y a pas de rappel."
+    )
+    # 4 coupons sur la durée de vie, quelle que soit T : le rendement annuel dépend donc de T
+    st.caption(
+        f"Coupon équivalent annuel : {coupon * 4 / T * 100:.2f}% par an. "
         "Le prix est la moyenne des cash-flows actualisés sur les trajectoires simulées."
     )
-    col1, col2 = st.columns(2)
-    n_trajectoires = col1.select_slider(
-        "Nombre de trajectoires", options=[1000, 5000, 10000, 50000, 100000], value=50000
-    )
-    seed = col2.number_input("Seed", min_value=0, value=42, step=1)
 
     # Le strike K de la barre latérale sert de niveau initial S0 de l'autocall (fixé à l'émission) :
     # seuil de rappel (100 %) et barrière (60 %) sont en % de K. Le spot S est le niveau du jour,
@@ -188,19 +216,34 @@ with onglet_autocall:
     st.caption(
         f"Niveau initial de l'autocall = strike K = {K:g}. Spot du jour = {S:g}, soit {S / K * 100:.1f} % du niveau initial."
     )
-    resultat = autocall_cache(K, T, r, sigma, q, n_trajectoires, seed, S)
+    resultat = autocall_cache(K, T, r, sigma, q, n_trajectoires, seed, S, coupon)
 
-    # Le module travaille en € pour un nominal = K : on affiche tout en % du nominal
+    # Le module travaille pour un nominal = K : on affiche en % du nominal (convention de cotation
+    # des produits structurés), et en € pour le nominal investi choisi
+    def en_euros(valeur):
+        return valeur / K * nominal
+
     col1, col2, col3 = st.columns(3)
     col1.metric("Prix (% du nominal)", f"{resultat['prix'] / K * 100:.2f} %",
-                help=f"Valeur aujourd'hui de l'autocall pour un nominal de {K:g} € : {resultat['prix']:.2f} €")
-    col2.metric("Erreur standard", f"{resultat['erreur_standard'] / K * 100:.3f} %")
+                help=f"Valeur aujourd'hui de l'autocall pour un nominal de {nominal:,.0f} € : {en_euros(resultat['prix']):,.2f} €")
+    col2.metric("Erreur standard", f"{resultat['erreur_standard'] / K * 100:.3f} %",
+                help="Précision du prix Monte Carlo : écart-type / √N")
     col3.metric("IC 95%", f"{resultat['borne_basse_95'] / K * 100:.2f} – {resultat['borne_haute_95'] / K * 100:.2f} %")
+    st.caption(
+        f"Pour un nominal de {nominal:,.0f} € : valeur {en_euros(resultat['prix']):,.2f} €, "
+        f"IC 95% {en_euros(resultat['borne_basse_95']):,.2f} – {en_euros(resultat['borne_haute_95']):,.2f} €, "
+        f"écart-type des cash-flows {en_euros(resultat['ecart_type']):,.2f} €."
+    )
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Probabilité de rappel anticipé", f"{resultat['probabilite_rappel_anticipe'] * 100:.1f} %",
                 help="Rappel à l'une des 3 premières dates (le rappel à la dernière date n'est pas anticipé)")
-    col2.metric("Probabilité de perte en capital", f"{resultat['probabilite_perte_capital'] * 100:.2f} %")
+    col2.metric("Probabilité de rappel total", f"{resultat['probabilite_rappel_total'] * 100:.1f} %",
+                help="Rappel à l'une des 4 dates, maturité comprise : somme des 4 barres du graphique")
+    col3.metric("Probabilité de perte en capital", f"{resultat['probabilite_perte_capital'] * 100:.2f} %")
+    col4.metric("Écart-type des cash-flows", f"{resultat['ecart_type'] / K * 100:.2f} %",
+                help="Dispersion des cash-flows actualisés d'une trajectoire à l'autre (risque du produit), "
+                     "à ne pas confondre avec l'erreur standard (précision du prix)")
 
     probas = [resultat[f"probabilite_rappel_mois_{m}"] for m in (3, 6, 9, 12)]
     barres = [{"Date": d, "Probabilité (%)": p * 100} for d, p in zip(dates, probas)]
@@ -212,14 +255,17 @@ with onglet_autocall:
     st.altair_chart(graphique, width=700)
 
     st.subheader("Convergence")
-    st.write("L'erreur standard diminue en 1/√N : 4 fois plus de trajectoires divisent l'erreur par 2.")
+    st.write(
+        "L'erreur standard diminue en 1/√N : 4 fois plus de trajectoires divisent l'erreur par 2. "
+        "La ligne du nombre de trajectoires choisi redonne le prix affiché plus haut."
+    )
     convergence = pd.DataFrame([
         {
             "Trajectoires": ligne["n_trajectoires"],
             "Prix (% du nominal)": round(ligne["prix"] / K * 100, 3),
             "Erreur standard (% du nominal)": round(ligne["erreur_standard"] / K * 100, 4),
         }
-        for ligne in convergence_cache(K, T, r, sigma, q, seed, S)
+        for ligne in convergence_cache(K, T, r, sigma, q, seed, S, coupon, tuple(choix_trajectoires))
     ])
     st.dataframe(convergence, hide_index=True, width="stretch")
 
@@ -227,6 +273,25 @@ with onglet_autocall:
 # --- Onglet 3 : Scénarios de marché -----------------------------------------
 
 with onglet_scenarios:
+    unite = st.radio("Afficher les variations en", ["€", "%"], horizontal=True, key="unite_variations",
+                     help="€ : variation de prix. % : variation relative au prix avant le choc.")
+    colonne_variation = f"Variation ({unite})"
+
+    # Deux scénarios combinés au choix (spot et vol choqués ensemble), ajoutés aux deux tableaux
+    st.write("Scénarios personnalisés (spot et vol choqués en même temps) :")
+    chocs_perso = []
+    for numero, spot_defaut, vol_defaut in ((1, -15.0, 5.0), (2, 5.0, -2.0)):
+        col1, col2 = st.columns(2)
+        choc_spot_perso = col1.number_input(f"Perso {numero} : choc de spot (%)", min_value=-99.0, max_value=200.0,
+                                            value=spot_defaut, step=1.0, key=f"perso_{numero}_spot") / 100
+        choc_vol_perso = col2.number_input(f"Perso {numero} : choc de vol (pts)", min_value=-99.0, max_value=200.0,
+                                           value=vol_defaut, step=0.5, key=f"perso_{numero}_vol") / 100
+        nom = f"perso {numero} : spot {choc_spot_perso * 100:+g}% / vol {choc_vol_perso * 100:+g} pts"
+        if sigma + choc_vol_perso > 0:
+            chocs_perso.append((nom, choc_spot_perso, choc_vol_perso))
+        else:
+            st.warning(f"Scénario perso {numero} ignoré : la vol stressée doit rester strictement positive.")
+
     st.subheader(f"Stress test du {type_option} (full repricing)")
     if type_option == "call":
         fonction_spot, fonction_vol = stress_spot_call, stress_vol_call
@@ -242,46 +307,56 @@ with onglet_scenarios:
     for choc in chocs_vol:
         if sigma + choc > 0:
             lignes.append({"scénario": f"vol {choc * 100:+.0f} pts", **fonction_vol(S, K, T, r, sigma, q, choc)})
+    for nom, choc_spot_perso, choc_vol_perso in chocs_perso:
+        res = stress_spot_vol_option(S, K, T, r, sigma, q, type_option, choc_spot_perso, choc_vol_perso)
+        lignes.append({"scénario": nom, **res})
 
     tableau = pd.DataFrame([
         {
             "Scénario": ligne["scénario"],
             "Prix avant": round(ligne["prix_avant"], 4),
             "Prix après": round(ligne["prix_apres"], 4),
-            "Variation (€)": round(ligne["variation_euros"], 4),
-            "Variation (%)": None if ligne["variation_pourcentage"] is None else round(ligne["variation_pourcentage"], 2),
+            colonne_variation: round(ligne["variation_euros"], 4) if unite == "€"
+            else None if ligne["variation_pourcentage"] is None else round(ligne["variation_pourcentage"], 2),
+            # Couleur calculée sur la variation en € : reste définie quand le prix avant est nul
+            "couleur": "#2ca02c" if ligne["variation_euros"] >= 0 else "#d62728",
         }
         for ligne in lignes
     ])
-    st.dataframe(tableau, hide_index=True, width="stretch")
+    # Hauteur calculée (35 px par ligne + l'en-tête) : par défaut Streamlit coupe après 10 lignes
+    st.dataframe(tableau.drop(columns="couleur"), hide_index=True, width="stretch", height=35 * (len(tableau) + 1) + 3)
 
     # Le graphique reprend exactement le tableau : vert si l'option gagne, rouge si elle perd
-    tableau["couleur"] = np.where(tableau["Variation (€)"] >= 0, "#2ca02c", "#d62728")
+    # Barres horizontales : les noms des scénarios personnalisés sont trop longs pour l'axe du bas
     graphique = alt.Chart(tableau).mark_bar().encode(
-        x=alt.X("Scénario:N", sort=list(tableau["Scénario"]), title=None, axis=alt.Axis(labelAngle=0)),
-        y=alt.Y("Variation (€):Q", title="Variation (€)"),
+        y=alt.Y("Scénario:N", sort=list(tableau["Scénario"]), title=None, axis=alt.Axis(labelLimit=0)),
+        x=alt.X(f"{colonne_variation}:Q", title=colonne_variation),
         color=alt.Color("couleur:N", scale=None),
-        tooltip=["Scénario:N", alt.Tooltip("Variation (€):Q", format="+.4f"), alt.Tooltip("Variation (%):Q", format="+.2f")],
+        tooltip=["Scénario:N", alt.Tooltip(f"{colonne_variation}:Q", format="+.4f" if unite == "€" else "+.2f")],
     )
-    zero = alt.Chart(pd.DataFrame([{"y": 0}])).mark_rule(color="grey").encode(y="y:Q")
-    graphique = (graphique + zero).properties(title=f"Variation du prix du {type_option} par scénario", height=300)
+    zero = alt.Chart(pd.DataFrame([{"x": 0}])).mark_rule(color="grey").encode(x="x:Q")
+    graphique = (graphique + zero).properties(title=f"Variation du prix du {type_option} par scénario",
+                                              height=alt.Step(30))
     st.altair_chart(graphique, width=700)
 
-    st.subheader("Stress test de l'autocall")
+    st.subheader("Stress test de l'autocall Athena")
     st.write(
-        f"Même term sheet que l'onglet Autocall (niveau initial = K = {K:g}, spot du jour = {S:g}) et même seed. "
+        f"Même term sheet que l'onglet Autocall (niveau initial = K = {K:g}, spot du jour = {S:g}, "
+        f"coupon {coupon * 100:g}%) et même seed. "
         "Les trajectoires sont les mêmes avant et après le choc : la variation mesure le choc et pas le bruit Monte Carlo."
     )
     n_stress = st.select_slider("Trajectoires pour le stress", options=[5000, 20000, 50000], value=20000)
     chocs_vol_autocall = tuple(c for c in (-0.05, 0.05, 0.10) if sigma + c > 0)
-    lignes_autocall = stress_autocall_cache(K, T, r, sigma, q, n_stress, seed, S, (-0.20, -0.10, 0.10), chocs_vol_autocall)
+    lignes_autocall = stress_autocall_cache(K, T, r, sigma, q, n_stress, seed, S, coupon,
+                                            (-0.20, -0.10, 0.10), chocs_vol_autocall, tuple(chocs_perso))
 
     tableau_autocall = pd.DataFrame([
         {
             "Scénario": ligne["scénario"],
             "Prix avant (%)": round(ligne["prix_avant"] / K * 100, 2),
             "Prix après (%)": round(ligne["prix_apres"] / K * 100, 2),
-            "Variation (pts)": round(ligne["variation_euros"] / K * 100, 2),
+            colonne_variation: round(ligne["variation_euros"] / K * nominal, 2) if unite == "€"
+            else round(ligne["variation_pourcentage"], 2),
             "Rappel avant (%)": round(ligne["proba_rappel_anticipe_avant"] * 100, 1),
             "Rappel après (%)": round(ligne["proba_rappel_anticipe_apres"] * 100, 1),
             "Perte avant (%)": round(ligne["proba_perte_capital_avant"] * 100, 2),
@@ -289,8 +364,15 @@ with onglet_scenarios:
         }
         for ligne in lignes_autocall
     ])
-    st.dataframe(tableau_autocall, hide_index=True, width="stretch")
-    st.caption("Prix et variation en % du nominal. Rappel = probabilité de rappel anticipé, perte = probabilité de perte en capital.")
+    st.dataframe(tableau_autocall, hide_index=True, width="stretch", height=35 * (len(tableau_autocall) + 1) + 3)
+    if unite == "€":
+        texte_variation = f"variation en € pour un nominal investi de {nominal:,.0f} € (onglet Autocall)"
+    else:
+        texte_variation = "variation en % du prix avant le choc"
+    st.caption(
+        f"Prix en % du nominal, {texte_variation}. "
+        "Rappel = probabilité de rappel anticipé, perte = probabilité de perte en capital."
+    )
 
 
 # --- Onglet 4 : Hedge & P&L Explain -----------------------------------------

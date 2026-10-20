@@ -73,10 +73,12 @@ def rho_put(S, K, T, r, sigma, q=0.0):
 # resultat_rho_put = rho_put(100, 100, 1, 0.02, 0.20, 0)
 # print(resultat_rho_put)
 
+# Différence centrée : erreur en h² au lieu de h pour la différence avant
+# (environ 1e-4 d'écart avec h = 0.01 en avant, moins de 1e-8 en centré)
 def delta_call_num(S, K, T, r, sigma, q=0.0, h=0.01):
-    prix_initial = prix_call(S, K, T, r, sigma, q)
-    prix_choque = prix_call(S+h, K, T, r, sigma, q)
-    return (prix_choque-prix_initial)/h
+    prix_haut = prix_call(S+h, K, T, r, sigma, q)
+    prix_bas = prix_call(S-h, K, T, r, sigma, q)
+    return (prix_haut-prix_bas)/(2*h)
 
 # resultat_delta_ana = delta_call(100, 100, 1, 0.02, 0.20, 0)
 # resultat_delta_num = delta_call_num(100, 100, 1, 0.02, 0.20, 0)
@@ -85,6 +87,6 @@ def delta_call_num(S, K, T, r, sigma, q=0.0, h=0.01):
 # print(resultat_delta_num)
 
 def delta_put_num(S, K, T, r, sigma, q=0.0, h=0.01):
-    prix_initial = prix_put(S, K, T, r, sigma, q)
-    prix_choque = prix_put(S+h, K, T, r, sigma, q)
-    return (prix_choque-prix_initial)/h
+    prix_haut = prix_put(S+h, K, T, r, sigma, q)
+    prix_bas = prix_put(S-h, K, T, r, sigma, q)
+    return (prix_haut-prix_bas)/(2*h)

@@ -1,7 +1,9 @@
 import pytest
 import math
 from risk.scenarios import stress_spot_call, stress_spot_put, stress_vol_call, stress_vol_put, stress_vol_autocall, stress_spot_autocall
+from risk.scenarios import stress_spot_vol_option, stress_spot_vol_autocall
 from monte_carlo.autocall import valoriser_autocall
+from pricing.black_scholes import prix_put
 
 def test_stress_spot_call_choc_nul():
     resultat = stress_spot_call(
@@ -482,3 +484,58 @@ def test_stress_vol_autocall_avec_spot_du_jour():
     assert resultat["prix_apres"] == pytest.approx(apres["prix"])
     # Plus de vol = plus de chances de passer sous la barrière
     assert resultat["proba_perte_capital_apres"] > resultat["proba_perte_capital_avant"]
+
+
+@pytest.mark.parametrize("type_option, stress_spot, stress_vol", [
+    ("call", stress_spot_call, stress_vol_call),
+    ("put", stress_spot_put, stress_vol_put),
+])
+def test_stress_spot_vol_option_retrouve_les_stress_simples(type_option, stress_spot, stress_vol):
+    S, K, T, r, sigma, q = 100, 95, 0.75, 0.03, 0.25, 0.02
+
+    assert stress_spot_vol_option(S, K, T, r, sigma, q, type_option, -0.10, 0.0) == pytest.approx(stress_spot(S, K, T, r, sigma, q, -0.10))
+    assert stress_spot_vol_option(S, K, T, r, sigma, q, type_option, 0.0, 0.05) == pytest.approx(stress_vol(S, K, T, r, sigma, q, 0.05))
+
+
+def test_stress_spot_vol_option_choc_combine():
+    # Krach : spot -15 % et vol +5 pts, reprix complet avec les deux chocs
+    resultat = stress_spot_vol_option(100, 100, 1, 0.02, 0.20, 0.0, "put", -0.15, 0.05)
+
+    assert resultat["prix_avant"] == pytest.approx(prix_put(100, 100, 1, 0.02, 0.20, 0.0))
+    assert resultat["prix_apres"] == pytest.approx(prix_put(85, 100, 1, 0.02, 0.25, 0.0))
+
+
+def test_stress_spot_vol_option_refuse_les_entrees_invalides():
+    with pytest.raises(ValueError, match="spot stressé"):
+        stress_spot_vol_option(100, 100, 1, 0.02, 0.20, 0.0, "call", -1.0, 0.0)
+    with pytest.raises(ValueError, match="volatilité stressée"):
+        stress_spot_vol_option(100, 100, 1, 0.02, 0.20, 0.0, "call", 0.0, -0.20)
+    with pytest.raises(ValueError, match="call"):
+        stress_spot_vol_option(100, 100, 1, 0.02, 0.20, 0.0, "autocall", 0.0, 0.0)
+
+
+def test_stress_spot_vol_autocall_retrouve_les_stress_simples():
+    parametres = dict(S0=100, T=1, r=0.02, sigma=0.20, q=0.0, n_trajectoires=5000, seed=42, spot=95)
+
+    assert stress_spot_vol_autocall(**parametres, choc_spot=-0.10, choc_vol=0.0) == pytest.approx(stress_spot_autocall(**parametres, choc_spot=-0.10))
+    assert stress_spot_vol_autocall(**parametres, choc_spot=0.0, choc_vol=0.05) == pytest.approx(stress_vol_autocall(**parametres, choc_vol=0.05))
+
+
+def test_stress_spot_vol_autocall_choc_combine_et_coupon():
+    parametres = dict(S0=100, T=1, r=0.02, q=0.0, n_trajectoires=5000, seed=42, coupon=0.03)
+    resultat = stress_spot_vol_autocall(**parametres, sigma=0.20, choc_spot=-0.15, choc_vol=0.05)
+
+    apres = valoriser_autocall(**parametres, sigma=0.25, spot=85)
+    assert resultat["prix_apres"] == pytest.approx(apres["prix"])
+    assert resultat["prix_avant"] == pytest.approx(valoriser_autocall(**parametres, sigma=0.20)["prix"])
+
+    with pytest.raises(ValueError, match="volatilité stressée"):
+        stress_spot_vol_autocall(**parametres, sigma=0.20, choc_spot=0.0, choc_vol=-0.20)
+
+
+def test_stress_autocall_transmet_le_coupon():
+    parametres = dict(S0=100, T=1, r=0.02, sigma=0.20, q=0.0, n_trajectoires=5000, seed=42)
+    resultat = stress_spot_autocall(**parametres, choc_spot=-0.10, coupon=0.04)
+
+    assert resultat["prix_avant"] == pytest.approx(valoriser_autocall(**parametres, coupon=0.04)["prix"])
+    assert stress_vol_autocall(**parametres, choc_vol=0.05, coupon=0.04)["prix_avant"] == pytest.approx(resultat["prix_avant"])

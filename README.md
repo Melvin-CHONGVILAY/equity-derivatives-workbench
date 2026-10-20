@@ -1,12 +1,12 @@
 # Equity Derivatives Pricing & Risk Workbench
 
-Petit outil Python de pricing et de risque sur options vanille et autocall : Black-Scholes, Greeks, Monte Carlo, stress tests et **P&L Explain** (P&L réel par reprix complet vs P&L estimé par les Greeks).
+Petit outil Python de pricing et de risque sur options vanille et autocall Athena : Black-Scholes, Greeks, Monte Carlo, stress tests et **P&L Explain** (P&L réel par reprix complet vs P&L estimé par les Greeks).
 
 **App en ligne :** (https://equity-derivatives-workbench-9hndrw3hacnh6bsmfahhxk.streamlit.app/)
 
 ![Onglet Pricing & Greeks](docs/capture_pricing.png)
 
-![Onglet Autocall Monte Carlo](docs/capture_autocall.png)
+![Onglet Autocall Athena](docs/capture_autocall.png)
 
 ![Onglet Hedge & P&L Explain](docs/capture_pnl_explain.png)
 
@@ -27,9 +27,9 @@ L'autocall est un produit signature des desks de produits structurés français,
 | `pricing/black_scholes.py` | `calculer_d1_d2`, `prix_call`, `prix_put` (avec dividende continu `q`) |
 | `pricing/implied_vol.py` | Volatilité implicite par Newton-Raphson (avec contrôle des bornes de non-arbitrage et de la valeur temps) |
 | `pricing/payoff.py` | Payoffs et P&L à maturité d'un call / put, graphique |
-| `greeks/greeks.py` | Delta, gamma, vega, theta, rho analytiques ; delta par différence finie |
-| `monte_carlo/autocall.py` | Simulation vectorisée (GBM), autocall à 4 dates d'observation, prix, erreur standard, IC 95%, probabilités de rappel / perte, convergence |
-| `risk/scenarios.py` | Stress tests spot / vol sur call, put et autocall (full repricing) |
+| `greeks/greeks.py` | Delta, gamma, vega, theta, rho analytiques ; delta par différence finie centrée |
+| `monte_carlo/autocall.py` | Simulation vectorisée (GBM), autocall Athena à 4 dates d'observation et coupon paramétrable, prix, écart-type, erreur standard, IC 95%, probabilités de rappel / perte, convergence |
+| `risk/scenarios.py` | Stress tests spot, vol et spot + vol combinés sur call, put et autocall (full repricing) |
 | `risk/pnl_explain.py` | P&L réel vs P&L estimé par Taylor, résidu, couverture delta, balayage des chocs de spot |
 | `app.py` | Interface Streamlit (4 onglets) |
 | `tests/` | Tests pytest de chaque module + tests de l'app (les graphiques affichent bien les valeurs calculées) |
@@ -74,21 +74,21 @@ Les modules se lancent depuis la racine, par exemple `python -m risk.pnl_explain
 
 Exemple sur un call ATM 1 an (S = K = 100, σ = 20%, r = 2%) : sur un petit mouvement (spot +1%, vol +0.5 pt, 1 jour) le résidu est d'environ 0.1% du P&L réel ; sur un gros choc (spot -15%, vol +5 pts, 5 jours) il monte à environ 7%, seul le reprix complet est alors fiable.
 
-**Autocall simplifié** (nominal = S0, niveau initial fixé à l'émission) :
+**Autocall Athena simplifié** (nominal = S0, niveau initial fixé à l'émission) :
 
 - 4 dates d'observation : T/4, T/2, 3T/4 et T (3, 6, 9 et 12 mois pour T = 1 an) ; rappel si le sous-jacent est ≥ 100% de S0
-- Coupon de 2% du nominal par date d'observation écoulée, payé au rappel (102, 104, 106 ou 108)
+- Coupon de 2% du nominal par date d'observation écoulée par défaut (paramètre `coupon`), mis en mémoire et payé au rappel (102, 104, 106 ou 108). Contrairement à un Phoenix, rien n'est versé sans rappel
 - À maturité sans rappel : nominal seul (100) si S_T ≥ 60% de S0, sinon nominal × S_T / S0 (perte en capital)
 - Prix = moyenne des cash-flows actualisés (`e^(-r·t)` à la date de paiement)
 - `spot` = niveau du sous-jacent aujourd'hui, point de départ des trajectoires (S0 par défaut). Seul le rapport spot / S0 compte : un spot sous S0 réduit le rappel et augmente le risque de perte
 
 Avec S0 = spot = 100, T = 1, r = 2%, σ = 20%, 50 000 trajectoires et seed = 42 : prix ≈ 100.88% du nominal (erreur standard ≈ 0.017), rappel anticipé ≈ 69%, perte en capital ≈ 0.5%. Avec un spot à 90 : prix ≈ 99.34%, rappel anticipé ≈ 36%.
 
-Dans l'app, le strike K de la barre latérale sert de niveau initial S0 de l'autocall et le spot S de point de départ ; prix, erreur standard et IC sont affichés en % du nominal.
+Dans l'app, le strike K de la barre latérale sert de niveau initial S0 de l'autocall et le spot S de point de départ ; prix, erreur standard et IC sont affichés en % du nominal (convention de cotation des produits structurés), et en € pour le nominal investi choisi. L'écart-type des cash-flows mesure la dispersion du produit d'une trajectoire à l'autre, l'erreur standard (écart-type / √N) la précision du prix.
 
 Avec ces paramètres, le drift du log-prix r - q - σ²/2 est nul : les probabilités de rappel ne dépendent alors pas de T, mais le prix et la perte en capital, oui. Ce n'est pas un bug : avec r = 3% ou un spot différent de S0, les probabilités bougent avec T.
 
-Pour les stress tests de l'autocall, les prix avant et après choc utilisent la **même seed et le même nombre de trajectoires** (nombres aléatoires communs) : la variation mesure l'effet du choc et pas le bruit Monte Carlo. Le term sheet (S0) ne bouge pas, seul le spot de départ est choqué.
+Pour les stress tests de l'autocall, les prix avant et après choc utilisent la **même seed et le même nombre de trajectoires** (nombres aléatoires communs) : la variation mesure l'effet du choc et pas le bruit Monte Carlo. Le term sheet (S0) ne bouge pas, seul le spot de départ est choqué. Dans l'app, deux scénarios personnalisés choquent le spot et la vol en même temps (par défaut spot -15% / vol +5 pts), pour les vanilles comme pour l'autocall.
 
 ## Hypothèses et limites du modèle
 

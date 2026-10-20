@@ -92,7 +92,8 @@ def stress_vol_autocall(
     choc_vol,
     n_trajectoires=50000,
     seed=42,
-    spot=None
+    spot=None,
+    coupon=0.02
 ):
     sigma_stressee = sigma + choc_vol
 
@@ -101,11 +102,11 @@ def stress_vol_autocall(
 
     resultat_avant = valoriser_autocall(
         S0, T, r, sigma, q,
-        n_trajectoires=n_trajectoires, seed=seed, spot=spot
+        n_trajectoires=n_trajectoires, seed=seed, spot=spot, coupon=coupon
     )
     resultat_apres = valoriser_autocall(
         S0, T, r, sigma_stressee, q,
-        n_trajectoires=n_trajectoires, seed=seed, spot=spot
+        n_trajectoires=n_trajectoires, seed=seed, spot=spot, coupon=coupon
     )
 
     return comparer_autocall(resultat_avant, resultat_apres)
@@ -120,7 +121,8 @@ def stress_spot_autocall(
     choc_spot,
     n_trajectoires=50000,
     seed=42,
-    spot=None
+    spot=None,
+    coupon=0.02
 ):
     if 1 + choc_spot <= 0:
         raise ValueError("Le spot stressé doit être strictement positif.")
@@ -133,11 +135,72 @@ def stress_spot_autocall(
     # d'avant multipliées par (1 + choc_spot) : le GBM est multiplicatif.
     resultat_avant = valoriser_autocall(
         S0, T, r, sigma, q,
-        n_trajectoires=n_trajectoires, seed=seed, spot=spot
+        n_trajectoires=n_trajectoires, seed=seed, spot=spot, coupon=coupon
     )
     resultat_apres = valoriser_autocall(
         S0, T, r, sigma, q,
-        n_trajectoires=n_trajectoires, seed=seed, spot=spot * (1 + choc_spot)
+        n_trajectoires=n_trajectoires, seed=seed, spot=spot * (1 + choc_spot), coupon=coupon
+    )
+
+    return comparer_autocall(resultat_avant, resultat_apres)
+
+
+# Scénarios combinés : spot et vol choqués en même temps (ex. krach = spot -15 %, vol +5 pts).
+# Avec choc_vol = 0 on retrouve stress_spot_*, avec choc_spot = 0 on retrouve stress_vol_*.
+
+def stress_spot_vol_option(S, K, T, r, sigma, q, type_option, choc_spot, choc_vol):
+    if type_option == "call":
+        fonction_prix = prix_call
+    elif type_option == "put":
+        fonction_prix = prix_put
+    else:
+        raise ValueError("Le type d'option doit être 'call' ou 'put'.")
+
+    S_stresse = S * (1 + choc_spot)
+    sigma_stressee = sigma + choc_vol
+
+    if S_stresse <= 0:
+        raise ValueError("Le spot stressé doit être strictement positif.")
+    if sigma_stressee <= 0:
+        raise ValueError("La volatilité stressée doit être strictement positive.")
+
+    prix_avant = fonction_prix(S, K, T, r, sigma, q)
+    prix_apres = fonction_prix(S_stresse, K, T, r, sigma_stressee, q)
+
+    return calculer_variation(prix_avant, prix_apres)
+
+
+def stress_spot_vol_autocall(
+    S0,
+    T,
+    r,
+    sigma,
+    q,
+    choc_spot,
+    choc_vol,
+    n_trajectoires=50000,
+    seed=42,
+    spot=None,
+    coupon=0.02
+):
+    if 1 + choc_spot <= 0:
+        raise ValueError("Le spot stressé doit être strictement positif.")
+
+    sigma_stressee = sigma + choc_vol
+
+    if sigma_stressee <= 0:
+        raise ValueError("La volatilité stressée doit être strictement positive.")
+
+    if spot is None:
+        spot = S0
+
+    resultat_avant = valoriser_autocall(
+        S0, T, r, sigma, q,
+        n_trajectoires=n_trajectoires, seed=seed, spot=spot, coupon=coupon
+    )
+    resultat_apres = valoriser_autocall(
+        S0, T, r, sigma_stressee, q,
+        n_trajectoires=n_trajectoires, seed=seed, spot=spot * (1 + choc_spot), coupon=coupon
     )
 
     return comparer_autocall(resultat_avant, resultat_apres)

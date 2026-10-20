@@ -36,7 +36,7 @@ def tracer_trajectoires(trajectoires, T, n_a_tracer=10, seuil_rappel=None):
     plt.legend()
     plt.show()
 
-def autocall(trajectoires, S0=100, seuil_rappel=100):
+def autocall(trajectoires, S0=100, seuil_rappel=100, coupon=0.02):
     prix_a_observation = trajectoires[:,[3,6,9,12]]
 
     condition_rappel = prix_a_observation >= seuil_rappel
@@ -46,8 +46,8 @@ def autocall(trajectoires, S0=100, seuil_rappel=100):
     nombre_coupons = premier_rappel+1
     nombre_coupons_rappel = np.where(est_rappelle, nombre_coupons, 0)
 
-    coupon = 0.02 * S0
-    remboursement_rappel = S0 + coupon * nombre_coupons_rappel
+    # coupon = rendement par date d'observation écoulée (0.02 = 2 % du nominal)
+    remboursement_rappel = S0 + coupon * S0 * nombre_coupons_rappel
     tableau_rappel_coupon = np.where(est_rappelle, remboursement_rappel, 0)
 
     prix_final = trajectoires[:, -1]
@@ -95,11 +95,12 @@ def cashflow_final_actualise(cashflow_final, r, t):
     return resultats_actualises
 
 
-def autocall_actualise(trajectoires, r, S0=100, seuil_rappel=100, T=1.0):
+def autocall_actualise(trajectoires, r, S0=100, seuil_rappel=100, T=1.0, coupon=0.02):
     cashflows = autocall(
         trajectoires,
         S0=S0,
-        seuil_rappel=seuil_rappel
+        seuil_rappel=seuil_rappel,
+        coupon=coupon
     )
 
     dates_paiement = dates_paiement_autocall(
@@ -162,7 +163,8 @@ def valoriser_autocall(
     n_pas=12,
     seed=42,
     seuil_rappel=None,
-    spot=None
+    spot=None,
+    coupon=0.02
 ):
     if n_pas != 12:
         raise ValueError(
@@ -203,7 +205,8 @@ def valoriser_autocall(
         r=r,
         S0=S0,
         seuil_rappel=seuil_rappel,
-        T=T
+        T=T,
+        coupon=coupon
     )
 
     prix = float(np.mean(valeurs_actualisees))
@@ -226,6 +229,7 @@ def valoriser_autocall(
 
     resultats = {
         "prix": prix,
+        "ecart_type": ecart_type,
         "erreur_standard": float(erreur_standard),
         "borne_basse_95": float(prix - marge_95),
         "borne_haute_95": float(prix + marge_95),
@@ -244,7 +248,8 @@ def analyser_convergence(
     q=0.0,
     nombres_trajectoires=(1000, 5000, 10000, 50000),
     seed=42,
-    spot=None
+    spot=None,
+    coupon=0.02
 ):
     resultats_convergence = []
 
@@ -258,7 +263,8 @@ def analyser_convergence(
             n_trajectoires=n_trajectoires,
             n_pas=12,
             seed=seed,
-            spot=spot
+            spot=spot,
+            coupon=coupon
         )
 
         resultats_convergence.append({
